@@ -1,0 +1,42 @@
+task: thresh_reg  # one of: regression, classification, thresh_reg
+seed: 42
+output_dir: evaluation/uncertainty_experiments/artifacts
+
+data:
+  n_train: 400
+  n_cal: 200
+  n_test: 400
+  dims: 2
+  holes: [[-0.5, -0.5, -0.1, 0.1]]  # [x1_min, x2_min, x1_max, x2_max]
+  shift: 0.0
+  hetero:
+    a: 1.5
+    b: -1.0
+    base: 0.1
+    scale: 0.8
+
+model:
+  type: rf  # dt or rf
+  params:
+    n_estimators: 100
+    max_depth: null
+    random_state: 42
+
+calibration:
+  classification:
+    method: venn_abers
+  regression:
+    method: split_cp
+    alpha: 0.1
+
+uncertainty:
+  knn_k: 20
+  de_weights:
+    nonconformity: 0.5
+    disagreement: 0.3
+    inv_density: 0.2
+
+logging:
+  save_predictions: true
+  save_metrics: true
+
