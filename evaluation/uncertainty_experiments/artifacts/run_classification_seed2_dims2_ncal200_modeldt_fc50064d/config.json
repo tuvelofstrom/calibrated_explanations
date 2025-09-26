@@ -1,0 +1,63 @@
+{
+  "experiment": "ce_uncertainty_v1",
+  "task": "classification",
+  "seed": 2,
+  "output_dir": "evaluation/uncertainty_experiments/artifacts",
+  "data": {
+    "n_train": 1000,
+    "n_cal": 200,
+    "n_test": 1000,
+    "dims": 2,
+    "holes": [
+      [
+        -0.8,
+        -0.8,
+        0.0,
+        0.2
+      ],
+      [
+        0.2,
+        -0.2,
+        0.8,
+        0.2
+      ]
+    ],
+    "holes_label": "large",
+    "shift": 0.2,
+    "hetero": {
+      "a": 1.5,
+      "b": -1.0,
+      "base": 0.1,
+      "scale": 0.8
+    }
+  },
+  "model": {
+    "type": "dt",
+    "params": {
+      "max_depth": 6
+    }
+  },
+  "uncertainty": {
+    "knn_k": 30,
+    "de_weights": {
+      "nonconformity": 0.5,
+      "disagreement": 0.3,
+      "inv_density": 0.2
+    },
+    "ablations": [
+      "none"
+    ]
+  },
+  "logging": {
+    "save_predictions": true,
+    "save_metrics": true,
+    "dump_rules": true,
+    "dump_alternatives": true,
+    "mlflow": false
+  },
+  "calibration": {
+    "classification": {
+      "method": "venn_abers"
+    }
+  }
+}

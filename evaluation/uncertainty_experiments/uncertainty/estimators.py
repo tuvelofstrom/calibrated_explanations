@@ -34,7 +34,15 @@ def knn_inverse_density(X: np.ndarray, k: int = 20) -> np.ndarray:
     return inv_density
 
 
+def knn_inverse_density_ref(X: np.ndarray, X_ref: np.ndarray, k: int = 20) -> np.ndarray:
+    """Inverse density for X measured against reference set X_ref."""
+    k_eff = min(k, len(X_ref))
+    nn = NearestNeighbors(n_neighbors=k_eff)
+    nn.fit(X_ref)
+    dists, _ = nn.kneighbors(X)
+    return dists.mean(axis=1)
+
+
 def nonconformity_regression(y_true: np.ndarray, y_pred: np.ndarray) -> np.ndarray:
     return np.abs(y_true - y_pred)
-
 
