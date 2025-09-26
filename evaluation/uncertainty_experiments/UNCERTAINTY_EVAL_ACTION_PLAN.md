@@ -20,7 +20,8 @@
 - CE factual/alternative dump: per-instance rule records with weight intervals and rule-level predictions (hooks.py:54, hooks.py:165, hooks.py:237). Config toggle exists (`logging.dump_rules`, `logging.dump_alternatives`).
 
 **Gaps Addressed In This v2 Plan**
-- Add rule-level calibration (Rule Reliability/ECE) for factual and alternative explanations.
+- Remove mis-specified rule-level calibration vs y_true using `rule_predict`.
+- Replace with effect-centric evaluation aligned with CE semantics (weights and intervals).
 - Add DE→rule failure detection (AUROC/AP) and failure calibration.
 - Analyze weight-interval width vs aleatoric η (not only density) and joint η×density.
 - Expand stability beyond exact top-1 match to Jaccard@k of rule sets.
@@ -36,9 +37,12 @@
 - Sweeps: seeds (≥3), n_cal ∈ {50,100,200}, holes ∈ {none, small, large}, shift δ ∈ {0.0, 0.2}, t-values auto or list.
 
 **Metrics & Definitions**
-- Rule-level calibration
-  - Rule Reliability (classification): reliability diagram and Rule‑ECE/NLL/Brier using `rule_predict` per factual/alternative rule, stratified by density and η tertiles.
-  - Rule‑exceedance (thresholded): Rule‑ECE over t using `p_rule_t` fields.
+- Effect-centric correctness (CE factual rules)
+  - Effect interval coverage: fraction of rules where a fresh counterfactual estimate Δp_cf (within the antecedent region) lies inside [w_low, w_high]; stratify by density/η and |w|.
+  - Effect magnitude calibration: bins of |w| vs observed mean |Δp_cf|; report monotonicity and slope.
+  - Effect sign faithfulness: P(sign(Δp_cf) = sign(w)) vs density/η; rank correlation Spearman(|w|, |Δp_cf|).
+- Thresholded (rule-level)
+  - Model-consistency exceedance: compare `p_rule_t` to fresh empirical exceedance under the rule region; report ECE vs t (model-consistent, not label-supervised).
 - Rule failure prediction
   - Define failure at point-level for top‑1 rule: empirical rule precision < τ (e.g., τ=0.7). Report AUROC/AP for DE, density, η, and random.
 - Weight uncertainty
@@ -56,8 +60,9 @@
 
 **Implementation Plan (Concrete Additions)**
 - Aggregation
-  - Add rule_ece for classification using `rules.jsonl` factual and alternative (`rule_predict`, `y_true`), with bins by predicted probability; emit `rule_reliability_by_bin.csv`, `rule_ece.csv`.
-  - Add thresholded `rule_ece_by_t.csv` from `p_rule_t` maps.
+  - Deprecate previous rule-level reliability vs y_true; stop emitting `rule_reliability_by_bin.csv` and `rule_ece.csv` for classification.
+  - Add effect-centric CSVs: `effect_interval_coverage.csv`, `effect_magnitude_calibration.csv`, `effect_sign_consistency.csv`, `effect_rank_correlation.csv`.
+  - For thresholded, add `thresh_reg_rule_consistency.csv` (model-consistent ECE vs t) using fresh sampling inside rule regions.
   - Compute DE→rule failure AUROC/AP (`rule_failure_auroc.csv`) using top‑1 rule per point.
   - Extend weight uncertainty to η (`ce_weight_uncertainty_by_eta.csv`) and joint density×η (optional).
   - Add stability Jaccard@k across seeds (`rule_stability_jaccard.csv`).

@@ -348,88 +348,10 @@ def aggregate(root: Path, out: Path, n_jobs: int = 1, *, jaccard_k: int = 3, rul
         if ce_dir_rows:
             w.writerows(ce_dir_rows)
 
-    # 1c) Rule-level reliability (classification factual & alternative)
-    rule_rel_rows: List[Dict[str, Any]] = []
-    rule_ece_rows: List[Dict[str, Any]] = []
-    def _valid_prob(x: Any) -> bool:
-        try:
-            v = float(x)
-            return (v == v) and (0.0 <= v <= 1.0)
-        except Exception:
-            return False
-    for rdir in runs:
-        rules_path = rdir / "rules.jsonl"
-        if not rules_path.exists():
-            continue
-        try:
-            cfg = _load_json(rdir / "config.json")
-        except Exception:
-            continue
-        if cfg.get("task") != "classification":
-            continue
-        # Load rules and filter records with usable rule_predict and y_true
-        recs: List[Dict[str, Any]] = []
-        with open(rules_path, "r", encoding="utf-8") as f:
-            for line in f:
-                line = line.strip()
-                if not line:
-                    continue
-                try:
-                    rec = json.loads(line)
-                except Exception:
-                    continue
-                if rec.get("y_true") is None:
-                    continue
-                if not _valid_prob(rec.get("rule_predict")):
-                    continue
-                recs.append(rec)
-        if not recs:
-            continue
-        # By explanation_type
-        types = sorted(set([r.get("explanation_type", "factual") for r in recs]))
-        for et in types:
-            subset = [r for r in recs if r.get("explanation_type", "factual") == et]
-            if not subset:
-                continue
-            # Predicted prob is rule_predict; label is y_true (binary)
-            ps = [float(r.get("rule_predict")) for r in subset]
-            ys = [int(r.get("y_true")) for r in subset]
-            bins, edges = _bin_indices(ps, n_bins=10)
-            total = max(1, len(ps))
-            ece_sum = 0.0
-            for b in range(1, 11):
-                m = [i for i, bb in enumerate(bins) if bb == b]
-                if not m:
-                    continue
-                p_mean = sum(ps[i] for i in m) / len(m)
-                acc_mean = sum(ys[i] for i in m) / len(m)
-                n = len(m)
-                se = math.sqrt(acc_mean * (1 - acc_mean) / max(n, 1)) if n > 1 else 0.0
-                rule_rel_rows.append({**_ctx(cfg), "run_dir": rdir.name, "explanation_type": et, "bin": b, "bin_edge_lo": edges[b-1], "bin_edge_hi": edges[b], "p_mean": p_mean, "acc_mean": acc_mean, "count": n, "acc_ci95": 1.96 * se})
-                ece_sum += abs(acc_mean - p_mean) * (n / total)
-            rule_ece_rows.append({**_ctx(cfg), "run_dir": rdir.name, "explanation_type": et, "ece": ece_sum})
-
-    with open(out / "rule_reliability_by_bin.csv", "w", newline="", encoding="utf-8") as f:
-        fieldnames = [
-            "experiment","task","seed","dims","n_train","n_cal","n_test","shift","holes_label",
-            "model","model_params","calib_classification","calib_regression","alpha","calib_thresholded","t_values","knn_k","de_weights","ablation",
-            "run_dir","explanation_type","bin","bin_edge_lo","bin_edge_hi","p_mean","acc_mean","count","acc_ci95",
-        ]
-        w = csv.DictWriter(f, fieldnames=fieldnames, extrasaction="ignore")
-        w.writeheader()
-        if rule_rel_rows:
-            w.writerows(rule_rel_rows)
-
-    with open(out / "rule_ece.csv", "w", newline="", encoding="utf-8") as f:
-        fieldnames = [
-            "experiment","task","seed","dims","n_train","n_cal","n_test","shift","holes_label",
-            "model","model_params","calib_classification","calib_regression","alpha","calib_thresholded","t_values","knn_k","de_weights","ablation",
-            "run_dir","explanation_type","ece",
-        ]
-        w = csv.DictWriter(f, fieldnames=fieldnames, extrasaction="ignore")
-        w.writeheader()
-        if rule_ece_rows:
-            w.writerows(rule_ece_rows)
+    # 1c) Rule-level reliability (classification) — DEPRECATED
+    # Note: rule_predict is an internal average used to derive feature weights and is not a
+    # supervised probability for instance labels. The previous analysis that compared
+    # rule_predict to y_true has been removed to avoid misinterpretation.
 
     # 4) Stability across seeds (top-1 rule exact match), stratified by density/eta
     # Group runs by config excluding seed

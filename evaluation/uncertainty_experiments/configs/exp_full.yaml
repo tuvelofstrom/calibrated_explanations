@@ -1,0 +1,107 @@
+## Top-level experiment identifiers and execution controls
+## experiment: free-form name used in indices and figure titles
+experiment: ce_uncertainty_v1
+## output_dir: where run_* folders are written
+output_dir: evaluation/uncertainty_experiments/artifacts
+## seeds: list of integer random seeds (e.g., 0..9)
+seeds: [0, 1, 2]
+## n_jobs: parallel workers for the grid runner (>=1). 4–16 is typical locally.
+n_jobs: 1
+## resume: if true, skip runs that already produced metrics.json
+resume: true
+
+## tasks: which problem types to run
+## - regression: real-valued target with conformal intervals
+## - classification: calibrated probabilities via Venn–Abers
+## - thresh_reg: thresholded regression P(Y>t)
+tasks: [regression, classification, thresh_reg]
+
+## data: synthetic generator controls
+data:
+  ## dims: feature dimensionality. 2 for visualization, 10 for scalability.
+  dims: [2]
+  ## n_train: training set sizes (typical 500–50k for synthetic)
+  n_train: [1000]
+  ## n_cal: calibration set sizes (50–2000 reasonable; affects calibration quality)
+  n_cal: [50, 100, 200]
+  ## n_test: test set sizes for evaluation
+  n_test: [1000]
+  ## hetero: heteroscedastic noise σ(x) parameters for regression
+  ##   sigma(x) = base + scale * sigmoid(a*x1 + b*x2)
+  ##   base in [0, 0.5], scale in [0, 2], a,b in [-3,3]
+  hetero:
+    a: 1.5
+    b: -1.0
+    base: 0.1
+    scale: 0.8
+  ## holes: train-support holes controlling epistemic “gaps”
+  ##   values: none | small | large (predefined regions), or add 'custom' via code
+  holes: [none, small, large]     # options: none, small, large (predefined)
+  ## shift: covariate shift magnitude on x2 at test time (0.0–0.5 reasonable)
+  shift: [0.0, 0.2]
+
+## models: learner families and hyperparameters
+## - type: dt | rf
+## - params:
+##   - dt.max_depth: 3/6/null (null = unlimited)
+##   - rf.n_estimators: 50–1000; rf.max_depth: 6/null
+models:
+  - {type: dt, params: {max_depth: 6}}
+  - {type: rf, params: {n_estimators: 100, max_depth: null}}
+
+## CE ablations and baselines (paper-track options)
+ablations: [none]   # options: none, ce_uncalibrated, ce_no_de, gate_density_only, gate_disagreement_only, random
+baselines: [surrogate_tree, stump_on_proba]
+
+## calibration: choices per task
+calibration:
+  ## classification: Venn–Abers (primary). Also allow ['none'] for ablations.
+  classification: [venn_abers]
+  ## regression: list expands into separate runs
+  ##   split_cp: split conformal (fast baseline)
+  ##   cross_cp: K-fold cross conformal (more stable residuals)
+  ##   jackknife_plus: K-fold Jackknife+ approximation (tighter in practice)
+  regression: [split_cp, cross_cp, jackknife_plus]
+  ## alpha: 1 - nominal coverage (e.g., 0.1 for 90% intervals)
+  alpha: 0.1
+  ## n_folds: K for cross_cp and jackknife_plus (3–10 typical)
+  n_folds: 5
+  ## thresholded regression (P(Y>t)) options
+  thresholded:
+    ## method: interval_map | cps (CPS to be wired next)
+    method: interval_map   # placeholder; cps later
+    ## t_values: auto (quantiles of y_test) or explicit list, e.g., [-0.5, 0.0, 0.5]
+    t_values: auto
+
+## uncertainty: estimators and DE composition
+uncertainty:
+  ## knn_k: neighbors for inverse-density proxy (10–100)
+  knn_k: 30
+  ## de_weights: weights for the composite Difficulty Estimator components.
+  ##   Should sum ~1.0; set a component to 0.0 to ablate.
+  de_weights: {nonconformity: 0.5, disagreement: 0.3, inv_density: 0.2}
+  ## ablations: which profiles to run (planned future use)
+  ##   none | no_disagreement | no_density | nonconformity_only
+  ablations: [none]
+
+## faithfulness: sampling controls (M2.5)
+faithfulness:
+  ## k: samples per point when jittering within/outside rule region
+  k: 8
+  ## sample_points: maximum number of test points per run for faithfulness
+  sample_points: 200
+
+## logging: artifact toggles and optional backends
+logging:
+  ## save_predictions: write artifacts.json (predictions, intervals, DE, etc.)
+  save_predictions: true
+  ## save_metrics: write metrics.json
+  save_metrics: true
+  ## dump_rules: write rules.json
+  dump_rules: true
+  ## dump_alternatives: also write alternative explanations (classification)
+  dump_alternatives: true
+  ## dump_baselines: write baseline_rules_<name>.jsonl files
+  dump_baselines: true
+  ## mlflow: optional MLflow logging (off by default to avoid dependency)
+  mlflow: false

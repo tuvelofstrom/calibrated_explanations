@@ -1,0 +1,25 @@
+{
+  "runs_found": 2268,
+  "rows": {
+    "coverage_by_sigma": 2916,
+    "ce_reliability_by_weight": 4564,
+    "ce_ece_by_weight": 953,
+    "ce_weight_uncertainty_by_density": 972,
+    "ce_rule_direction_consistency": 1944,
+    "rule_reliability_by_bin": 2487,
+    "rule_ece": 324,
+    "rule_stability": 648,
+    "rule_faithfulness": 3482,
+    "uncertainty_sensitivity_summary": 2268,
+    "ece_by_ncal": 36,
+    "thresh_reg_reliability": 2916,
+    "thresh_reg_rule_reliability_by_bin": 0,
+    "ece_by_density": 972,
+    "coverage_by_density": 2916,
+    "correlations_de_sigma": 972,
+    "risk_coverage_classification": 9720,
+    "coverage_by_sigma_density": 8748,
+    "selective_utility_curves": 259200,
+    "selective_utility_auc": 12960
+  }
+}
