@@ -4,6 +4,7 @@ import argparse
 import csv
 import json
 from pathlib import Path
+import os
 from typing import Any, Dict, List, Tuple
 import math
 
@@ -51,7 +52,31 @@ def _rank_corr(xs: List[float], ys: List[float]) -> float:
 
 
 def aggregate(root: Path, out: Path, n_jobs: int = 1, *, jaccard_k: int = 3, rule_failure_tau: float = 0.7) -> None:
+    # Ensure output directory exists and normalize path to avoid Windows path quirks
     out.mkdir(parents=True, exist_ok=True)
+    try:
+        out = out.resolve()
+    except Exception:
+        pass
+
+    def _open_w(p: Path):
+        """Open a text file for CSV writing robustly across platforms.
+
+        Ensures parent directory exists. Falls back to str(path) or
+        omitting newline on rare Windows invalid-argument issues.
+        """
+        p = Path(p)
+        p.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            return open(p, "w", newline="", encoding="utf-8")
+        except OSError as e:
+            # Retry with str path, and without newline if needed
+            if getattr(e, "errno", None) == 22:
+                try:
+                    return open(os.fspath(p), "w", encoding="utf-8")
+                except Exception:
+                    pass
+            raise
     runs = _scan_runs(root)
 
     # Context columns extracted from per-run config
@@ -304,7 +329,7 @@ def aggregate(root: Path, out: Path, n_jobs: int = 1, *, jaccard_k: int = 3, rul
         if ce_rel_rows:
             w.writerows(ce_rel_rows)
 
-    with open(out / "ce_ece_by_weight.csv", "w", newline="", encoding="utf-8") as f:
+    with _open_w(out / "ce_ece_by_weight.csv") as f:
         fieldnames = [
             "experiment","task","seed","dims","n_train","n_cal","n_test","shift","holes_label",
             "model","model_params","calib_classification","calib_regression","alpha","calib_thresholded","t_values","knn_k","de_weights","ablation",
@@ -348,10 +373,311 @@ def aggregate(root: Path, out: Path, n_jobs: int = 1, *, jaccard_k: int = 3, rul
         if ce_dir_rows:
             w.writerows(ce_dir_rows)
 
-    # 1c) Rule-level reliability (classification) — DEPRECATED
-    # Note: rule_predict is an internal average used to derive feature weights and is not a
-    # supervised probability for instance labels. The previous analysis that compared
-    # rule_predict to y_true has been removed to avoid misinterpretation.
+    # 1c) Effect-centric evaluation (classification factual) using stored rule_predict (model-consistent)
+    eff_cov_rows: List[Dict[str, Any]] = []
+    eff_mag_rows: List[Dict[str, Any]] = []
+    eff_sign_rows: List[Dict[str, Any]] = []
+    eff_rank_rows: List[Dict[str, Any]] = []
+    for rdir in runs:
+        rules_path = rdir / "rules.jsonl"
+        if not rules_path.exists():
+            continue
+        try:
+            cfg = _load_json(rdir / "config.json")
+        except Exception:
+            continue
+        if cfg.get("task") != "classification":
+            continue
+        recs: List[Dict[str, Any]] = []
+        with open(rules_path, "r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    rec = json.loads(line)
+                except Exception:
+                    continue
+                if rec.get("explanation_type") != "factual":
+                    continue
+                try:
+                    wv = float(rec.get("w"))
+                    wl = float(rec.get("w_low"))
+                    wh = float(rec.get("w_high"))
+                    rp = float(rec.get("rule_predict"))
+                    pb = float(rec.get("p_pred"))
+                except Exception:
+                    continue
+                recs.append({
+                    "w": wv,
+                    "w_low": wl,
+                    "w_high": wh,
+                    "delta": (rp - pb),
+                    "inv_density": rec.get("inv_density"),
+                    "eta": rec.get("eta"),
+                })
+        if not recs:
+            continue
+        import numpy as np
+        w = np.array([r["w"] for r in recs], dtype=float)
+        wl = np.array([r["w_low"] for r in recs], dtype=float)
+        wh = np.array([r["w_high"] for r in recs], dtype=float)
+        delta = np.array([r["delta"] for r in recs], dtype=float)
+        invd = np.array([float(r["inv_density"]) if r["inv_density"] is not None else np.nan for r in recs], dtype=float)
+        eta_arr = np.array([float(r["eta"]) if r["eta"] is not None else np.nan for r in recs], dtype=float)
+
+        absw = np.abs(w)
+        absd = np.abs(delta)
+        covered = ((delta >= wl) & (delta <= wh)).astype(float)
+
+        def tertiles(arr: np.ndarray) -> np.ndarray:
+            x = arr.copy()
+            if np.all(np.isnan(x)):
+                return np.zeros_like(x)
+            mu = np.nanmean(x)
+            x[np.isnan(x)] = mu
+            cuts = np.quantile(x, [0.33, 0.66])
+            return np.digitize(x, cuts)
+
+        db = tertiles(invd)
+        eb = tertiles(eta_arr)
+        wb = tertiles(absw)
+
+        def _cov(mask: np.ndarray) -> Tuple[float, float, int]:
+            if not np.any(mask):
+                return (float("nan"), float("nan"), 0)
+            vals = covered[mask]
+            rate = float(np.mean(vals))
+            n = int(np.sum(mask))
+            se = (rate * (1 - rate) / max(1, n)) ** 0.5 if n > 1 else 0.0
+            return (rate, 1.96 * se, n)
+
+        for bi in [0, 1, 2]:
+            r, ci, n = _cov(db == bi)
+            eff_cov_rows.append({**_ctx(cfg), "run_dir": rdir.name, "bin_type": "density", "bin_id": bi, "coverage": r, "ci95": ci, "n": n})
+        for bi in [0, 1, 2]:
+            r, ci, n = _cov(eb == bi)
+            eff_cov_rows.append({**_ctx(cfg), "run_dir": rdir.name, "bin_type": "eta", "bin_id": bi, "coverage": r, "ci95": ci, "n": n})
+        for bi in [0, 1, 2]:
+            r, ci, n = _cov(wb == bi)
+            eff_cov_rows.append({**_ctx(cfg), "run_dir": rdir.name, "bin_type": "absw", "bin_id": bi, "coverage": r, "ci95": ci, "n": n})
+
+        # Magnitude calibration by |w| tertiles
+        for bi in [0, 1, 2]:
+            m = wb == bi
+            if not np.any(m):
+                continue
+            vals = absd[m]
+            mu = float(np.nanmean(vals))
+            se = float(np.nanstd(vals, ddof=1) / max(1, np.sqrt(np.sum(~np.isnan(vals))))) if np.sum(~np.isnan(vals)) > 1 else 0.0
+            eff_mag_rows.append({**_ctx(cfg), "run_dir": rdir.name, "absw_bin": bi, "mean_abs_delta": mu, "ci95": 1.96 * se})
+
+        # Sign consistency by density/eta
+        sgn_ok = (np.sign(delta) == np.sign(w)).astype(float)
+        for bi in [0, 1, 2]:
+            m = db == bi
+            if np.any(m):
+                rate = float(np.mean(sgn_ok[m]))
+                n = int(np.sum(m))
+                se = (rate * (1 - rate) / max(1, n)) ** 0.5 if n > 1 else 0.0
+                eff_sign_rows.append({**_ctx(cfg), "run_dir": rdir.name, "bin_type": "density", "bin_id": bi, "rate": rate, "ci95": 1.96 * se, "n": n})
+        for bi in [0, 1, 2]:
+            m = eb == bi
+            if np.any(m):
+                rate = float(np.mean(sgn_ok[m]))
+                n = int(np.sum(m))
+                se = (rate * (1 - rate) / max(1, n)) ** 0.5 if n > 1 else 0.0
+                eff_sign_rows.append({**_ctx(cfg), "run_dir": rdir.name, "bin_type": "eta", "bin_id": bi, "rate": rate, "ci95": 1.96 * se, "n": n})
+
+        eff_rank_rows.append({**_ctx(cfg), "run_dir": rdir.name, "spearman_absw_absdelta": _rank_corr(absw.tolist(), absd.tolist())})
+
+    with open(out / "effect_interval_coverage.csv", "w", newline="", encoding="utf-8") as f:
+        fieldnames = [
+            "experiment","task","seed","dims","n_train","n_cal","n_test","shift","holes_label",
+            "model","model_params","calib_classification","calib_regression","alpha","calib_thresholded","t_values","knn_k","de_weights","ablation",
+            "run_dir","bin_type","bin_id","coverage","ci95","n",
+        ]
+        w = csv.DictWriter(f, fieldnames=fieldnames, extrasaction="ignore")
+        w.writeheader()
+        if eff_cov_rows:
+            w.writerows(eff_cov_rows)
+
+    with open(out / "effect_magnitude_calibration.csv", "w", newline="", encoding="utf-8") as f:
+        fieldnames = [
+            "experiment","task","seed","dims","n_train","n_cal","n_test","shift","holes_label",
+            "model","model_params","calib_classification","calib_regression","alpha","calib_thresholded","t_values","knn_k","de_weights","ablation",
+            "run_dir","absw_bin","mean_abs_delta","ci95",
+        ]
+        w = csv.DictWriter(f, fieldnames=fieldnames, extrasaction="ignore")
+        w.writeheader()
+        if eff_mag_rows:
+            w.writerows(eff_mag_rows)
+
+    with open(out / "effect_sign_consistency.csv", "w", newline="", encoding="utf-8") as f:
+        fieldnames = [
+            "experiment","task","seed","dims","n_train","n_cal","n_test","shift","holes_label",
+            "model","model_params","calib_classification","calib_regression","alpha","calib_thresholded","t_values","knn_k","de_weights","ablation",
+            "run_dir","bin_type","bin_id","rate","ci95","n",
+        ]
+        w = csv.DictWriter(f, fieldnames=fieldnames, extrasaction="ignore")
+        w.writeheader()
+        if eff_sign_rows:
+            w.writerows(eff_sign_rows)
+
+    with open(out / "effect_rank_correlation.csv", "w", newline="", encoding="utf-8") as f:
+        fieldnames = [
+            "experiment","task","seed","dims","n_train","n_cal","n_test","shift","holes_label",
+            "model","model_params","calib_classification","calib_regression","alpha","calib_thresholded","t_values","knn_k","de_weights","ablation",
+            "run_dir","spearman_absw_absdelta",
+        ]
+        w = csv.DictWriter(f, fieldnames=fieldnames, extrasaction="ignore")
+        w.writeheader()
+        if eff_rank_rows:
+            w.writerows(eff_rank_rows)
+
+    # 1d) Strict coverage via light fresh sampling (rebuild data/model and CE; match stored intervals)
+    strict_rows: List[Dict[str, Any]] = []
+    try:
+        from evaluation.uncertainty_experiments.data_gen.classification import make_binary_gaussian as _mk
+        from evaluation.uncertainty_experiments.models.wrappers import make_model as _mk_model
+        from calibrated_explanations.core.wrap_explainer import WrapCalibratedExplainer as _W
+    except Exception:
+        _mk = None  # type: ignore
+        _mk_model = None  # type: ignore
+        _W = None  # type: ignore
+
+    if _mk is not None and _mk_model is not None and _W is not None:
+        for rdir in runs:
+            try:
+                cfg = _load_json(rdir / "config.json")
+                art = _load_json(rdir / "artifacts.json")
+            except Exception:
+                continue
+            if cfg.get("task") != "classification":
+                continue
+            rules_path = rdir / "rules.jsonl"
+            if not rules_path.exists():
+                continue
+            # Load stored intervals keyed by (point_id, antecedent_str)
+            stored: Dict[Tuple[int, str], Tuple[float, float]] = {}
+            with open(rules_path, "r", encoding="utf-8") as f:
+                for line in f:
+                    try:
+                        rec = json.loads(line)
+                    except Exception:
+                        continue
+                    if rec.get("explanation_type") != "factual":
+                        continue
+                    pid = rec.get("point_id")
+                    rule = rec.get("antecedent_str")
+                    if pid is None or rule is None:
+                        continue
+                    try:
+                        wl = float(rec.get("w_low"))
+                        wh = float(rec.get("w_high"))
+                    except Exception:
+                        continue
+                    stored[(int(pid), str(rule))] = (wl, wh)
+            if not stored:
+                continue
+            # Re-generate data and rebuild model/CE (same data seed; CE seed offset for fresh sampling)
+            data = _mk(
+                n_train=cfg["data"]["n_train"],
+                n_cal=cfg["data"]["n_cal"],
+                n_test=cfg["data"]["n_test"],
+                dims=cfg["data"].get("dims", 2),
+                holes=cfg["data"].get("holes"),
+                shift=cfg["data"].get("shift", 0.0),
+                seed=cfg.get("seed", 42),
+            )
+            mw = _mk_model("classification", cfg["model"]["type"], cfg["model"]["params"]).fit(data["X_train"], data["y_train"])  # type: ignore[attr-defined]
+            W = _W(mw.model)
+            # Use a different seed to trigger independent sampling in CE
+            W.calibrate(data["X_cal"], data["y_cal"], seed=int(cfg.get("seed", 42)) + 777)
+            ce_new = W.explain_factual(data["X_test"])  # type: ignore
+            # Get bins for density/eta from stored artifacts
+            import numpy as np
+            invd = np.array(art.get("inv_density_test", []), dtype=float)
+            eta = np.array(art.get("eta_test", []), dtype=float) if art.get("eta_test") is not None else np.full(len(data["X_test"]), np.nan)
+            def tertiles(arr: np.ndarray) -> np.ndarray:
+                x = arr.copy()
+                if np.all(np.isnan(x)):
+                    return np.zeros_like(x)
+                mu = np.nanmean(x)
+                x[np.isnan(x)] = mu
+                cuts = np.quantile(x, [0.33, 0.66])
+                return np.digitize(x, cuts)
+            db = tertiles(invd) if invd.size else np.zeros(len(data["X_test"]))
+            eb = tertiles(eta) if eta.size else np.zeros(len(data["X_test"]))
+            # Sample limit
+            SAMPLE_POINTS = int((cfg.get("faithfulness", {}) or {}).get("sample_points", 200))
+            n = len(ce_new.explanations)
+            idxs = list(range(min(n, SAMPLE_POINTS)))
+            for pid in idxs:
+                exp = ce_new.explanations[pid]
+                rules = exp._get_rules()  # noqa: SLF001
+                if not rules.get("rule"):
+                    continue
+                # rank by |weight|
+                try:
+                    import numpy as _np
+                    order = list(_np.argsort(_np.abs(_np.array(rules.get("weight", [])))))
+                    order.reverse()
+                except Exception:
+                    order = list(range(len(rules.get("rule", []))))
+                idx = order[0]
+                antecedent = str(rules["rule"][idx]).strip()
+                key = (pid, antecedent)
+                if key not in stored:
+                    continue
+                wl, wh = stored[key]
+                try:
+                    rp = float(rules["predict"][idx])
+                    pb = float(exp.prediction.get("predict"))
+                    delta = rp - pb
+                except Exception:
+                    continue
+                bin_d = int(db[pid]) if invd.size else 0
+                bin_e = int(eb[pid]) if eta.size else 0
+                inside = (delta >= wl) and (delta <= wh)
+                strict_rows.append({**_ctx(cfg), "run_dir": rdir.name, "point_id": pid, "bin_type": "density", "bin_id": bin_d, "inside": int(inside)})
+                strict_rows.append({**_ctx(cfg), "run_dir": rdir.name, "point_id": pid, "bin_type": "eta", "bin_id": bin_e, "inside": int(inside)})
+
+    # Aggregate strict coverage
+    strict_cov_rows: List[Dict[str, Any]] = []
+    if strict_rows:
+        by_key: Dict[Tuple[str, str, int], List[int]] = {}
+        for r in strict_rows:
+            k = (r.get("run_dir"), r.get("bin_type"), int(r.get("bin_id")))
+            by_key.setdefault(k, []).append(int(r.get("inside", 0)))
+        for (rd, bt, bi), vals in by_key.items():
+            import numpy as np
+            rate = float(np.mean(vals))
+            n = len(vals)
+            se = (rate * (1 - rate) / max(1, n)) ** 0.5 if n > 1 else 0.0
+            # Retrieve a representative cfg for context
+            cfg = None
+            for rdir in runs:
+                if (rdir.name == rd):
+                    try:
+                        cfg = _load_json(rdir / "config.json")
+                    except Exception:
+                        cfg = None
+                    break
+            row_ctx = _ctx(cfg) if cfg else {}
+            row_ctx.update({"run_dir": rd, "bin_type": bt, "bin_id": int(bi), "coverage": rate, "ci95": 1.96 * se, "n": n})
+            strict_cov_rows.append(row_ctx)
+
+    with open(out / "effect_interval_coverage_strict.csv", "w", newline="", encoding="utf-8") as f:
+        fieldnames = [
+            "experiment","task","seed","dims","n_train","n_cal","n_test","shift","holes_label",
+            "model","model_params","calib_classification","calib_regression","alpha","calib_thresholded","t_values","knn_k","de_weights","ablation",
+            "run_dir","bin_type","bin_id","coverage","ci95","n",
+        ]
+        w = csv.DictWriter(f, fieldnames=fieldnames, extrasaction="ignore")
+        w.writeheader()
+        if strict_cov_rows:
+            w.writerows(strict_cov_rows)
 
     # 4) Stability across seeds (top-1 rule exact match), stratified by density/eta
     # Group runs by config excluding seed
@@ -1009,7 +1335,8 @@ def aggregate(root: Path, out: Path, n_jobs: int = 1, *, jaccard_k: int = 3, rul
     for rdir in runs:
         rules_path = rdir / "rules.jsonl"
         if not rules_path.exists():
-            continue
+            # Fallback handled below (recompute on the fly if needed)
+            pass
         try:
             cfg = _load_json(rdir / "config.json")
         except Exception:
@@ -1018,22 +1345,91 @@ def aggregate(root: Path, out: Path, n_jobs: int = 1, *, jaccard_k: int = 3, rul
             continue
         # Load rules; require p_rule_t dict and y_true
         recs: List[Dict[str, Any]] = []
-        with open(rules_path, "r", encoding="utf-8") as f:
-            for line in f:
-                line = line.strip()
-                if not line:
-                    continue
+        if rules_path.exists():
+            with open(rules_path, "r", encoding="utf-8") as f:
+                for line in f:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        rec = json.loads(line)
+                    except Exception:
+                        continue
+                    if rec.get("explanation_type") != "factual":
+                        continue
+                    if rec.get("y_true") is None:
+                        continue
+                    if not isinstance(rec.get("p_rule_t"), dict):
+                        continue
+                    recs.append(rec)
+        # If missing on-disk rules for thresholded regression, rebuild lightweight per-rule records on the fly
+        if not recs:
+            try:
+                from evaluation.uncertainty_experiments.data_gen.regression import generate_regression as _mk_reg  # type: ignore
+                from evaluation.uncertainty_experiments.models.wrappers import make_model as _mk_model_reg  # type: ignore
+                from evaluation.uncertainty_experiments.rules.hooks import (
+                    extract_factual_rule_records_for_thresholded_regression as _extract_th_rules,  # type: ignore
+                )
+            except Exception:
+                _mk_reg = None  # type: ignore
+                _mk_model_reg = None  # type: ignore
+                _extract_th_rules = None  # type: ignore
+            if _mk_reg is not None and _mk_model_reg is not None and _extract_th_rules is not None:
                 try:
-                    rec = json.loads(line)
+                    # Rebuild synthetic data consistent with this run's config
+                    d = cfg.get("data", {}) or {}
+                    hetero = d.get("hetero") if isinstance(d.get("hetero"), dict) else None
+                    data = _mk_reg(
+                        n_train=int(d.get("n_train", 1000)),
+                        n_cal=int(d.get("n_cal", 100)),
+                        n_test=int(d.get("n_test", 1000)),
+                        dims=int(d.get("dims", 2)),
+                        holes=d.get("holes"),
+                        shift=float(d.get("shift", 0.0) or 0.0),
+                        hetero=hetero,
+                        seed=int(cfg.get("seed", 42)),
+                    )
+                    # Build and fit learner
+                    model_cfg = cfg.get("model", {}) or {}
+                    mw = _mk_model_reg("regression", model_cfg.get("type", "dt"), model_cfg.get("params", {}) or {})
+                    mw.fit(data["X_train"], data["y_train"])  # type: ignore[attr-defined]
+                    # Determine thresholds from metrics.json if available
+                    t_keys: List[str] = []
+                    try:
+                        m = _load_json(rdir / "metrics.json")
+                        pt = m.get("per_threshold", {}) if isinstance(m, dict) else {}
+                        t_keys = list(pt.keys())
+                    except Exception:
+                        t_keys = []
+                    if not t_keys:
+                        # fallback to config t_values list (may be 'auto')
+                        t_cfg = ((cfg.get("calibration", {}) or {}).get("thresholded", {}) or {}).get("t_values")
+                        if isinstance(t_cfg, (list, tuple)):
+                            t_keys = [f"t={float(v):.4g}" for v in t_cfg]
+                    # Parse to floats
+                    t_values: List[float] = []
+                    for k in t_keys:
+                        try:
+                            t_values.append(float(str(k).split("=")[-1]))
+                        except Exception:
+                            continue
+                    if t_values:
+                        # Extract per-rule records with per-threshold probabilities
+                        recs = _extract_th_rules(
+                            mw.model,
+                            data["X_cal"],
+                            data["y_cal"],
+                            data["X_test"],
+                            data["y_test"],
+                            t_values,
+                            de_test=None,
+                            inv_density_test=None,
+                            sigma_test=data.get("sigma_test"),
+                            feature_names=None,
+                            seed=int(cfg.get("seed", 42)),
+                        )
                 except Exception:
-                    continue
-                if rec.get("explanation_type") != "factual":
-                    continue
-                if rec.get("y_true") is None:
-                    continue
-                if not isinstance(rec.get("p_rule_t"), dict):
-                    continue
-                recs.append(rec)
+                    recs = []
         if not recs:
             continue
         # Collect all t keys
@@ -1686,7 +2082,8 @@ def aggregate(root: Path, out: Path, n_jobs: int = 1, *, jaccard_k: int = 3, rul
     by_group: Dict[str, Dict[str, Any]] = {}
     vals_by_group_shift: Dict[str, Dict[float, List[float]]] = {}
     vals_by_group_holes: Dict[str, Dict[float, List[float]]] = {}
-    for r in rule_ece_rows:
+    # Use baseline rule ECE rows (classification factual) for slope computation
+    for r in bl_ece_rows:
         c = _key_without({k: r.get(k) for k in ("experiment","task","dims","n_train","n_cal","n_test","shift","holes_label","model","model_params","calib_classification","calib_regression","alpha","calib_thresholded","t_values","knn_k","de_weights","explanation_type")}, ["shift","holes_label"])  # context sans shift/holes
         et = r.get("explanation_type")
         gkey = json.dumps({**c, "explanation_type": et}, sort_keys=True)
@@ -1771,8 +2168,11 @@ def aggregate(root: Path, out: Path, n_jobs: int = 1, *, jaccard_k: int = 3, rul
             "ce_ece_by_weight": len(ce_ece_rows),
             "ce_weight_uncertainty_by_density": len(ce_w_unc_rows),
             "ce_rule_direction_consistency": len(ce_dir_rows),
-            "rule_reliability_by_bin": len(rule_rel_rows),
-            "rule_ece": len(rule_ece_rows),
+            "effect_interval_coverage": len(eff_cov_rows),
+            "effect_magnitude_calibration": len(eff_mag_rows),
+            "effect_sign_consistency": len(eff_sign_rows),
+            "effect_rank_correlation": len(eff_rank_rows),
+            "effect_interval_coverage_strict": len(strict_cov_rows),
             "rule_stability": len(stability_rows),
             "rule_faithfulness": len(faith_rows),
             "uncertainty_sensitivity_summary": len(sens_rows),

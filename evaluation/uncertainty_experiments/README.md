@@ -105,14 +105,14 @@ Updates (v2)
   - `--jaccard-k`: top-k size for Jaccard stability (default 3).
   - `--rule-failure-tau`: threshold τ for labeling rule failures as precision<τ (default 0.7).
 - New derived CSVs:
-  - `rule_reliability_by_bin.csv`, `rule_ece.csv` (classification rule-level reliability; factual and alternative).
+  - `ce_reliability_by_weight.csv`, `ce_ece_by_weight.csv` (classification prediction-level calibration, stratified by top-1 |w| tertiles).
   - `thresh_reg_rule_reliability_by_bin.csv` (thresholded rule-level ECE vs t).
   - `ce_weight_uncertainty_by_eta.csv` (weight-interval width vs η tertiles).
   - `rule_stability_jaccard.csv` (avg pairwise Jaccard@k across seeds; k from `--jaccard-k`).
   - `rule_failure_auroc.csv`, `rule_failure_ap.csv` (DE/density/η detection of low-precision rules; τ from `--rule-failure-tau`).
   - `uncertainty_sensitivity_slopes.csv` (slopes vs shift δ and holes size s for key metrics).
 - New figures (viz/make_figures.py):
-  - `rule_level_reliability.png`, `rule_ece_bars.png` (classification rule-level calibration).
+  - `ce_reliability_by_weight.png`, `ce_ece_by_weight.png` (classification calibration conditioned on |w|).
   - `thresh_reg_rule_ece_by_t.png` (thresholded rule-level ECE across thresholds).
   - `ce_weight_uncertainty_eta.png` (aleatoric impact on weight uncertainty).
   - `rule_stability_jaccard_density.png`, `rule_stability_jaccard_eta.png` (set-level stability).

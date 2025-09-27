@@ -414,63 +414,9 @@ def fig_ce_weight_uncertainty_by_eta(derived: Path, figdir: Path):
     plt.close()
 
 
-def fig_rule_level_reliability(derived: Path, figdir: Path):
-    rows = _read_csv(derived / "rule_reliability_by_bin.csv")
-    if not rows:
-        return
-    from collections import defaultdict
-    series = defaultdict(lambda: defaultdict(list))  # et -> p_bin_center -> list of (p_mean, acc_mean, ci)
-    for r in rows:
-        et = r.get("explanation_type", "factual")
-        lo = _to_float_safe(r.get("bin_edge_lo", np.nan))
-        hi = _to_float_safe(r.get("bin_edge_hi", np.nan))
-        ctr = 0.5 * (lo + hi)
-        p_m = _to_float_safe(r.get("p_mean", np.nan))
-        a_m = _to_float_safe(r.get("acc_mean", np.nan))
-        a_ci = _to_float_safe(r.get("acc_ci95", np.nan))
-        series[et][ctr].append((p_m, a_m, a_ci))
-
-    plt.figure(figsize=(6, 6))
-    xs_ref = np.linspace(0, 1, 50)
-    plt.plot(xs_ref, xs_ref, color="gray", linestyle="--", linewidth=1, label="Ideal")
-    for et, s in sorted(series.items()):
-        xs = sorted(s.keys())
-        p_means = [np.mean([v[0] for v in s[x]]) for x in xs]
-        acc_means = [np.mean([v[1] for v in s[x]]) for x in xs]
-        acc_cis = [np.mean([v[2] for v in s[x]]) for x in xs]
-        plt.errorbar(p_means, acc_means, yerr=acc_cis, marker="o", capsize=3, label=et)
-    plt.xlabel("Rule predicted probability")
-    plt.ylabel("Empirical accuracy")
-    plt.title("Rule-level reliability (classification)")
-    plt.legend()
-    plt.tight_layout()
-    plt.savefig(figdir / "rule_level_reliability.png", dpi=150)
-    plt.close()
-
-
-def fig_rule_ece_bars(derived: Path, figdir: Path):
-    rows = _read_csv(derived / "rule_ece.csv")
-    if not rows:
-        return
-    from collections import defaultdict
-    vals = defaultdict(list)
-    for r in rows:
-        et = r.get("explanation_type", "factual")
-        e = _to_float_safe(r.get("ece", np.nan))
-        if not math.isnan(e):
-            vals[et].append(e)
-    labels = sorted(vals.keys())
-    means = [np.mean(vals[k]) if vals[k] else np.nan for k in labels]
-    cis = [_agg_mean_ci(vals[k])[1] for k in labels]
-    plt.figure(figsize=(5, 4))
-    xs = np.arange(len(labels))
-    plt.bar(xs, means, yerr=cis, capsize=3)
-    plt.xticks(xs, labels)
-    plt.ylabel("Rule ECE")
-    plt.title("Rule-level ECE (classification)")
-    plt.tight_layout()
-    plt.savefig(figdir / "rule_ece_bars.png", dpi=150)
-    plt.close()
+# Removed legacy rule-level reliability plots (classification)
+# The CE story focuses on prediction-level calibration conditioned by |w|
+# and baseline proxies live under baseline_* CSVs.
 
 
 def fig_th_rule_ece_by_t(derived: Path, figdir: Path):
@@ -596,37 +542,49 @@ def fig_rule_failure_metrics(derived: Path, figdir: Path):
         uniq = sorted(set([round(t, 6) for t in tau_vals]))
         tau_disp = str(uniq[0]) if len(uniq) == 1 else "varies"
     if auc_vals:
-        labels = sorted(auc_vals.keys())
-        means = [np.mean(auc_vals[k]) if auc_vals[k] else np.nan for k in labels]
-        cis = [_agg_mean_ci(auc_vals[k])[1] for k in labels]
-        plt.figure(figsize=(6, 4))
-        xs = np.arange(len(labels))
-        plt.bar(xs, means, yerr=cis, capsize=3)
-        plt.xticks(xs, labels)
-        plt.ylabel("AUROC")
-        title = "Rule failure detection: AUROC by signal"
-        if tau_disp:
-            title = f"Rule failure detection (τ={tau_disp}): AUROC by signal"
-        plt.title(title)
-        plt.tight_layout()
-        plt.savefig(figdir / "rule_failure_auroc.png", dpi=150)
-        plt.close()
+        labels_raw = sorted(auc_vals.keys())
+        labels, means, cis = [], [], []
+        for k in labels_raw:
+            m, ci = _agg_mean_ci(auc_vals[k])
+            if not math.isnan(m):
+                labels.append(k)
+                means.append(m)
+                cis.append(ci)
+        if labels:
+            plt.figure(figsize=(6, 4))
+            xs = np.arange(len(labels))
+            plt.bar(xs, means, yerr=cis, capsize=3)
+            plt.xticks(xs, labels)
+            plt.ylabel("AUROC")
+            title = "Rule failure detection: AUROC by signal"
+            if tau_disp:
+                title = f"Rule failure detection (τ={tau_disp}): AUROC by signal"
+            plt.title(title)
+            plt.tight_layout()
+            plt.savefig(figdir / "rule_failure_auroc.png", dpi=150)
+            plt.close()
     if ap_vals:
-        labels = sorted(ap_vals.keys())
-        means = [np.mean(ap_vals[k]) if ap_vals[k] else np.nan for k in labels]
-        cis = [_agg_mean_ci(ap_vals[k])[1] for k in labels]
-        plt.figure(figsize=(6, 4))
-        xs = np.arange(len(labels))
-        plt.bar(xs, means, yerr=cis, capsize=3)
-        plt.xticks(xs, labels)
-        plt.ylabel("Average Precision")
-        title = "Rule failure detection: AP by signal"
-        if tau_disp:
-            title = f"Rule failure detection (τ={tau_disp}): AP by signal"
-        plt.title(title)
-        plt.tight_layout()
-        plt.savefig(figdir / "rule_failure_ap.png", dpi=150)
-        plt.close()
+        labels_raw = sorted(ap_vals.keys())
+        labels, means, cis = [], [], []
+        for k in labels_raw:
+            m, ci = _agg_mean_ci(ap_vals[k])
+            if not math.isnan(m):
+                labels.append(k)
+                means.append(m)
+                cis.append(ci)
+        if labels:
+            plt.figure(figsize=(6, 4))
+            xs = np.arange(len(labels))
+            plt.bar(xs, means, yerr=cis, capsize=3)
+            plt.xticks(xs, labels)
+            plt.ylabel("Average Precision")
+            title = "Rule failure detection: AP by signal"
+            if tau_disp:
+                title = f"Rule failure detection (τ={tau_disp}): AP by signal"
+            plt.title(title)
+            plt.tight_layout()
+            plt.savefig(figdir / "rule_failure_ap.png", dpi=150)
+            plt.close()
 
 
 def fig_sensitivity_slopes(derived: Path, figdir: Path):
@@ -748,7 +706,8 @@ def fig_rule_stability(derived: Path, figdir: Path):
         plt.title("Rule stability (exact match) by density tertiles")
         plt.tight_layout()
         plt.savefig(figdir / "rule_stability_density.png", dpi=150)
-        plt.close()
+    plt.close()
+    # Eta tertiles
     if eta:
         labels = [0, 1, 2]
         means = [np.mean([v[0] for v in eta[b]]) if eta[b] else np.nan for b in labels]
@@ -762,6 +721,121 @@ def fig_rule_stability(derived: Path, figdir: Path):
         plt.tight_layout()
         plt.savefig(figdir / "rule_stability_eta.png", dpi=150)
         plt.close()
+
+
+def fig_effect_interval_coverage(derived: Path, figdir: Path):
+    rows = _read_csv(derived / "effect_interval_coverage.csv")
+    if not rows:
+        return
+    from collections import defaultdict
+    acc = defaultdict(list)
+    for r in rows:
+        bt = r.get("bin_type")
+        bi = int(_to_float_safe(r.get("bin_id", float("nan"))))
+        cov = _to_float_safe(r.get("coverage", float("nan")))
+        if bt in ("density", "eta", "absw"):
+            acc[(bt, bi)].append(cov)
+    for bt in ("density", "eta", "absw"):
+        vals = [acc.get((bt, b), []) for b in [0, 1, 2]]
+        if not any(vals):
+            continue
+        labels = [0, 1, 2]
+        means = [float(sum(v) / len(v)) if v else float("nan") for v in vals]
+        cis = [_agg_mean_ci(v)[1] if v else float("nan") for v in vals]
+        plt.figure(figsize=(5, 4))
+        xs = np.arange(len(labels))
+        plt.bar(xs, means, yerr=cis, capsize=3)
+        plt.xticks(xs, ["low", "mid", "high"])
+        plt.ylim(0, 1)
+        plt.ylabel("Coverage inside [w_low, w_high]")
+        title = {
+            "density": "Effect interval coverage by density",
+            "eta": "Effect interval coverage by η",
+            "absw": "Effect interval coverage by |w|",
+        }[bt]
+        plt.title(title)
+        plt.tight_layout()
+        outname = {
+            "density": "effect_interval_coverage_density.png",
+            "eta": "effect_interval_coverage_eta.png",
+            "absw": "effect_interval_coverage_absw.png",
+        }[bt]
+        plt.savefig(figdir / outname, dpi=150)
+        plt.close()
+
+
+def fig_effect_magnitude_calibration(derived: Path, figdir: Path):
+    rows = _read_csv(derived / "effect_magnitude_calibration.csv")
+    if not rows:
+        return
+    from collections import defaultdict
+    bins = defaultdict(list)
+    for r in rows:
+        bi = int(_to_float_safe(r.get("absw_bin", float("nan"))))
+        m = _to_float_safe(r.get("mean_abs_delta", float("nan")))
+        if m == m:
+            bins[bi].append(m)
+    labels = [0, 1, 2]
+    means = [np.mean(bins[b]) if bins[b] else np.nan for b in labels]
+    cis = [_agg_mean_ci(bins[b])[1] if bins[b] else np.nan for b in labels]
+    plt.figure(figsize=(5, 4))
+    xs = np.arange(len(labels))
+    plt.bar(xs, means, yerr=cis, capsize=3)
+    plt.xticks(xs, ["low |w|", "mid |w|", "high |w|"])
+    plt.ylabel("Mean |Δp_cf|")
+    plt.title("Effect magnitude vs |w| tertiles")
+    plt.tight_layout()
+    plt.savefig(figdir / "effect_magnitude_vs_absw.png", dpi=150)
+    plt.close()
+
+
+def fig_effect_sign_consistency(derived: Path, figdir: Path):
+    rows = _read_csv(derived / "effect_sign_consistency.csv")
+    if not rows:
+        return
+    from collections import defaultdict
+    dens = defaultdict(list)
+    eta = defaultdict(list)
+    for r in rows:
+        bt = r.get("bin_type")
+        bi = int(_to_float_safe(r.get("bin_id", float("nan"))))
+        v = _to_float_safe(r.get("rate", float("nan")))
+        if bt == "density":
+            dens[bi].append(v)
+        elif bt == "eta":
+            eta[bi].append(v)
+    for name, series in (("density", dens), ("eta", eta)):
+        labels = [0, 1, 2]
+        means = [np.mean(series[b]) if series[b] else np.nan for b in labels]
+        cis = [_agg_mean_ci(series[b])[1] if series[b] else np.nan for b in labels]
+        plt.figure(figsize=(5, 4))
+        xs = np.arange(len(labels))
+        plt.bar(xs, means, yerr=cis, capsize=3)
+        plt.xticks(xs, ["low", "mid", "high"])
+        plt.ylim(0, 1)
+        plt.ylabel("P(sign(Δp_cf)=sign(w))")
+        plt.title(f"Effect sign consistency by {name}")
+        plt.tight_layout()
+        plt.savefig(figdir / f"effect_sign_consistency_{name}.png", dpi=150)
+        plt.close()
+
+
+def fig_effect_rank_correlation(derived: Path, figdir: Path):
+    rows = _read_csv(derived / "effect_rank_correlation.csv")
+    if not rows:
+        return
+    vals = [ _to_float_safe(r.get("spearman_absw_absdelta", float("nan"))) for r in rows ]
+    vals = [v for v in vals if v == v]
+    if not vals:
+        return
+    mean, ci = _agg_mean_ci(vals)
+    plt.figure(figsize=(5, 4))
+    plt.bar([0], [mean], yerr=[ci], capsize=3)
+    plt.xticks([0], ["Spearman(|w|,|Δp_cf|)"])
+    plt.title("Effect magnitude rank correlation")
+    plt.tight_layout()
+    plt.savefig(figdir / "effect_rank_correlation.png", dpi=150)
+    plt.close()
 
 
 def fig_rule_faithfulness(derived: Path, figdir: Path):
@@ -996,9 +1070,7 @@ def main():
     fig_regression_coverage_by_density(derived, figdir)
     fig_regression_heatmap_sigma_density(derived, figdir)
     fig_thresh_reg_reliability(derived, figdir)
-    # New rule-level reliability outputs
-    fig_rule_level_reliability(derived, figdir)
-    fig_rule_ece_bars(derived, figdir)
+    # Thresholded regression: rule-level exceedance reliability across t
     fig_th_rule_ece_by_t(derived, figdir)
     # CE-first: rule reliability and ECE
     fig_ce_reliability_by_weight(derived, figdir)
@@ -1012,6 +1084,11 @@ def main():
     fig_selective_utility(derived, figdir)
     fig_rule_failure_metrics(derived, figdir)
     fig_sensitivity_slopes(derived, figdir)
+    # Effect-centric figures
+    fig_effect_interval_coverage(derived, figdir)
+    fig_effect_magnitude_calibration(derived, figdir)
+    fig_effect_sign_consistency(derived, figdir)
+    fig_effect_rank_correlation(derived, figdir)
     # Appendix (optional): uncomment to render
     # fig_ece_by_ncal(derived, figdir)
     # fig_ece_by_density(derived, figdir)
