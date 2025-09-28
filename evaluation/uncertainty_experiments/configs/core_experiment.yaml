@@ -1,0 +1,61 @@
+experiment: ce_paper_core_v1
+output_dir: evaluation/uncertainty_experiments/artifacts
+seeds: [0, 1, 2]
+n_jobs: 4
+resume: true
+
+tasks: [classification, regression, thresh_reg]
+
+data:
+  dims: [2]
+  n_train: [2000]
+  n_cal: [100, 400]
+  n_test: [2000]
+  hetero:
+    a: 1.5
+    b: -1.0
+    base: 0.1
+    scale: 0.8
+  holes: [none, small]
+  shift: [0.0, 0.2]
+
+models:
+  - type: dt
+    params:
+      max_depth: 6
+  - type: rf
+    params:
+      n_estimators: 200
+      max_depth: null
+
+ablations: [none]
+baselines: []
+
+calibration:
+  classification: [venn_abers]
+  regression: [split_cp, jackknife_plus]
+  alpha: 0.1
+  n_folds: 5
+  thresholded:
+    method: interval_map
+    t_values: auto
+
+uncertainty:
+  knn_k: 40
+  de_weights:
+    nonconformity: 0.5
+    disagreement: 0.3
+    inv_density: 0.2
+  ablations: [none]
+
+faithfulness:
+  k: 8
+  sample_points: 200
+
+logging:
+  save_predictions: true
+  save_metrics: true
+  dump_rules: true
+  dump_alternatives: true
+  dump_baselines: false
+  mlflow: false

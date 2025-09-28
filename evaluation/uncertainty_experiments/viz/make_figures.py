@@ -1070,6 +1070,8 @@ def main():
     fig_regression_coverage_by_density(derived, figdir)
     fig_regression_heatmap_sigma_density(derived, figdir)
     fig_thresh_reg_reliability(derived, figdir)
+    # Prediction-level sanity check (classification)
+    fig_ece_by_density(derived, figdir)
     # Thresholded regression: rule-level exceedance reliability across t
     fig_th_rule_ece_by_t(derived, figdir)
     # CE-first: rule reliability and ECE
@@ -1091,7 +1093,7 @@ def main():
     fig_effect_rank_correlation(derived, figdir)
     # Appendix (optional): uncomment to render
     # fig_ece_by_ncal(derived, figdir)
-    # fig_ece_by_density(derived, figdir)
+    # fig_risk_coverage(derived, figdir)
     # fig_risk_coverage(derived, figdir)
     # fig_correlations(derived, figdir)
 
