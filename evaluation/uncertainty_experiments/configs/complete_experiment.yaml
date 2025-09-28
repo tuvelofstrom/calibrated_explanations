@@ -1,0 +1,61 @@
+experiment: ce_paper_complete_v1
+output_dir: evaluation/uncertainty_experiments/artifacts
+seeds: [0, 1, 2, 3, 4]
+n_jobs: 6
+resume: true
+
+tasks: [classification, regression, thresh_reg]
+
+data:
+  dims: [2, 10]
+  n_train: [1000, 2000, 5000]
+  n_cal: [50, 100, 400]
+  n_test: [2000]
+  hetero:
+    a: 1.5
+    b: -1.0
+    base: 0.1
+    scale: 1.2
+  holes: [none, small, large]
+  shift: [0.0, 0.2, 0.3]
+
+models:
+  - type: dt
+    params:
+      max_depth: 6
+  - type: rf
+    params:
+      n_estimators: 300
+      max_depth: null
+
+ablations: [none, ce_uncalibrated, ce_no_de, gate_density_only, gate_disagreement_only]
+baselines: [surrogate_tree, stump_on_proba]
+
+calibration:
+  classification: [venn_abers, none]
+  regression: [split_cp, cross_cp, jackknife_plus]
+  alpha: 0.1
+  n_folds: 5
+  thresholded:
+    method: interval_map
+    t_values: [-1.0, -0.5, 0.0, 0.5, 1.0]
+
+uncertainty:
+  knn_k: 60
+  de_weights:
+    nonconformity: 0.5
+    disagreement: 0.25
+    inv_density: 0.25
+  ablations: [none, no_density, nonconformity_only]
+
+faithfulness:
+  k: 16
+  sample_points: 400
+
+logging:
+  save_predictions: true
+  save_metrics: true
+  dump_rules: true
+  dump_alternatives: true
+  dump_baselines: true
+  mlflow: false
