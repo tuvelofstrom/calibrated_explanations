@@ -22,7 +22,9 @@ Batch Execution & Aggregation
   - Example: `python -m evaluation.uncertainty_experiments.grid_runner --config evaluation/uncertainty_experiments/configs/exp_full.yaml --n-jobs 6 --resume`
   - Expands list-valued fields (tasks, seeds, data sizes, calibration methods, ablations, baselines) into a Cartesian run grid.
 - Aggregator: `evaluation/uncertainty_experiments/aggregate.py`
-  - Example: `python -m evaluation.uncertainty_experiments.aggregate --root evaluation/uncertainty_experiments/artifacts --out evaluation/uncertainty_experiments/derived --n-jobs 6 --jaccard-k 5 --rule-failure-tau 0.65`
+  - Example (filter to the core grid and auto-place outputs in `derived/ce_paper_core_v1`):
+    `python -m evaluation.uncertainty_experiments.aggregate --root evaluation/uncertainty_experiments/artifacts --config evaluation/uncertainty_experiments/configs/core_experiment.yaml`
+  - Pass `--out` to override the derived directory or `--experiment ce_paper_core_v1` to select runs without a spec file.
   - Emits CSVs including:
     - Regression coverage: `coverage_by_sigma.csv`, `coverage_by_density.csv`, `coverage_by_sigma_density.csv`.
     - CE calibration: `ce_reliability_by_weight.csv`, `ce_ece_by_weight.csv`.

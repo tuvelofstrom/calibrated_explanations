@@ -5,7 +5,17 @@ import csv
 import json
 from pathlib import Path
 import os
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Optional, Set, Tuple
+
+try:  # pragma: no cover - optional dependency and circular import safety
+    from evaluation.uncertainty_experiments.grid_runner import _read_config as _read_grid_config  # type: ignore
+except Exception:  # pragma: no cover
+    _read_grid_config = None  # type: ignore
+
+try:  # pragma: no cover - optional dependency
+    import yaml  # type: ignore
+except Exception:  # pragma: no cover
+    yaml = None  # type: ignore
 import math
 
 # Optional parallelism for per-run heavy steps
@@ -18,6 +28,46 @@ except Exception:  # pragma: no cover
 
 def _scan_runs(root: Path) -> List[Path]:
     return [p for p in root.glob("run_*_*") if p.is_dir()]
+
+
+def _filter_runs_by_experiment(runs: List[Path], experiments: Optional[Set[str]]) -> List[Path]:
+    if not experiments:
+        return runs
+    filtered: List[Path] = []
+    for rdir in runs:
+        try:
+            cfg = _load_json(rdir / "config.json")
+        except Exception:
+            continue
+        exp_name = cfg.get("experiment")
+        if exp_name in experiments:
+            filtered.append(rdir)
+    return filtered
+
+
+def _experiments_from_spec(spec: Dict[str, Any]) -> Set[str]:
+    experiments: Set[str] = set()
+    value = spec.get("experiment")
+    if isinstance(value, str) and value:
+        experiments.add(value)
+    extra = spec.get("experiments")
+    if isinstance(extra, str) and extra:
+        experiments.add(extra)
+    elif isinstance(extra, list):
+        experiments.update({str(v) for v in extra if isinstance(v, str) and v})
+    return experiments
+
+
+def _read_spec(path: Path) -> Dict[str, Any]:
+    if _read_grid_config is not None:
+        return _read_grid_config(os.fspath(path))
+    with open(path, "r", encoding="utf-8") as f:
+        text = f.read()
+    if str(path).endswith(".json"):
+        return json.loads(text)
+    if yaml is None:
+        raise RuntimeError("PyYAML is required to read non-JSON specs")
+    return yaml.safe_load(text)
 
 
 def _load_json(p: Path) -> Dict[str, Any]:
@@ -51,7 +101,15 @@ def _rank_corr(xs: List[float], ys: List[float]) -> float:
     return float(np.mean(rx * ry))
 
 
-def aggregate(root: Path, out: Path, n_jobs: int = 1, *, jaccard_k: int = 3, rule_failure_tau: float = 0.7) -> None:
+def aggregate(
+    root: Path,
+    out: Path,
+    n_jobs: int = 1,
+    *,
+    jaccard_k: int = 3,
+    rule_failure_tau: float = 0.7,
+    experiments: Optional[Set[str]] = None,
+) -> None:
     # Ensure output directory exists and normalize path to avoid Windows path quirks
     out.mkdir(parents=True, exist_ok=True)
     try:
@@ -77,7 +135,7 @@ def aggregate(root: Path, out: Path, n_jobs: int = 1, *, jaccard_k: int = 3, rul
                 except Exception:
                     pass
             raise
-    runs = _scan_runs(root)
+    runs = _filter_runs_by_experiment(_scan_runs(root), experiments)
 
     # Context columns extracted from per-run config
     def _ctx(cfg: Dict[str, Any]) -> Dict[str, Any]:
@@ -2195,29 +2253,82 @@ def aggregate(root: Path, out: Path, n_jobs: int = 1, *, jaccard_k: int = 3, rul
 def main():
     ap = argparse.ArgumentParser(description="Aggregate experiment runs into paper-ready CSVs")
     ap.add_argument("--root", required=True, help="Artifacts root (where run_* folders are)")
-    ap.add_argument("--out", required=True, help="Output directory for derived CSVs")
+    ap.add_argument("--out", help="Output directory for derived CSVs")
+    ap.add_argument("--config", help="Grid spec used to derive experiment metadata (YAML/JSON)")
+    ap.add_argument(
+        "--experiment",
+        dest="experiments",
+        action="append",
+        help="Experiment identifier to include. Repeat or pass comma-separated values for multiple entries.",
+    )
     ap.add_argument("--n-jobs", type=int, default=1, help="Parallel workers for expensive per-run steps (faithfulness)")
     ap.add_argument("--jaccard-k", type=int, default=3, help="Top-k size for Jaccard stability (default: 3)")
     ap.add_argument("--rule-failure-tau", type=float, default=0.7, help="Threshold τ for rule failure (precision<τ) (default: 0.7)")
     args = ap.parse_args()
 
     root = Path(args.root)
-    out = Path(args.out)
+    experiments: Set[str] = set()
+    if args.experiments:
+        for item in args.experiments:
+            if not item:
+                continue
+            experiments.update({part.strip() for part in item.split(",") if part.strip()})
+
+    spec: Optional[Dict[str, Any]] = None
+    spec_path: Optional[Path] = None
+    if args.config:
+        spec_path = Path(args.config)
+        spec = _read_spec(spec_path)
+        experiments.update(_experiments_from_spec(spec))
+
+    if args.out is None:
+        if args.config is None:
+            ap.error("--out is required unless --config is provided")
+        derived_root = Path("evaluation/uncertainty_experiments/derived")
+        if experiments:
+            if len(experiments) == 1:
+                suffix = next(iter(experiments))
+            else:
+                suffix = "multi_experiment"
+        else:
+            suffix = (spec_path.stem if spec_path is not None else "grid")
+        out = derived_root / suffix
+    else:
+        out = Path(args.out)
+
     n_jobs = int(args.n_jobs or 1)
     if n_jobs == 1:
-        # Try to default to grid spec n_jobs from index_*.json
-        try:
-            idx_files = list(root.glob("index_*.json"))
-            if idx_files:
-                idx = _load_json(idx_files[0])
-                spec = idx.get("spec", {}) if isinstance(idx, dict) else {}
+        if spec:
+            try:
                 cfg_nj = int(spec.get("n_jobs", 1) or 1)
                 n_jobs = max(1, cfg_nj)
-        except Exception:
-            n_jobs = 1
+            except Exception:
+                pass
+        if n_jobs == 1:
+            # Try to default to grid spec n_jobs from index_*.json
+            try:
+                idx_files = list(root.glob("index_*.json"))
+                if idx_files:
+                    idx = _load_json(idx_files[0])
+                    spec_idx = idx.get("spec", {}) if isinstance(idx, dict) else {}
+                    cfg_nj = int(spec_idx.get("n_jobs", 1) or 1)
+                    n_jobs = max(1, cfg_nj)
+            except Exception:
+                n_jobs = 1
 
-    aggregate(root, out, n_jobs=n_jobs, jaccard_k=int(args.jaccard_k or 3), rule_failure_tau=float(args.rule_failure_tau or 0.7))
-    print(f"Derived CSVs written to {args.out}")
+    experiments_filter = experiments or None
+    if experiments_filter:
+        print(f"Restricting aggregation to experiments: {sorted(experiments_filter)}")
+
+    aggregate(
+        root,
+        out,
+        n_jobs=n_jobs,
+        jaccard_k=int(args.jaccard_k or 3),
+        rule_failure_tau=float(args.rule_failure_tau or 0.7),
+        experiments=experiments_filter,
+    )
+    print(f"Derived CSVs written to {out}")
 
 if __name__ == "__main__":
     main()

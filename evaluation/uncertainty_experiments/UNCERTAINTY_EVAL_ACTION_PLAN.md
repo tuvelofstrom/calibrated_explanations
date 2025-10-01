@@ -46,7 +46,7 @@
 5. For ablation and baseline comparisons, define table layouts summarising deltas relative to CE control runs.
 
 **Execution Checklist**
-- Run core grid: `python -m evaluation.uncertainty_experiments.grid_runner --config evaluation/uncertainty_experiments/configs/core_experiment.yaml --n-jobs 4 --resume`.
+- Run core grid: `python -m evaluation.uncertainty_experiments.grid_runner --config evaluation/uncertainty_experiments/configs/core_experiment.yaml --n-jobs 6 --resume`.
 - Run complementary grid after validating core results; consider splitting by task if runtime is high.
 - Aggregate after each grid: `python -m evaluation.uncertainty_experiments.aggregate --root evaluation/uncertainty_experiments/artifacts --out evaluation/uncertainty_experiments/derived --n-jobs 6 --jaccard-k 5 --rule-failure-tau 0.65`.
 - Regenerate figures: `python -m evaluation.uncertainty_experiments.viz.make_figures --derived evaluation/uncertainty_experiments/derived --figdir evaluation/uncertainty_experiments/figures`.

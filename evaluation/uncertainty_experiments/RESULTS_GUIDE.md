@@ -129,7 +129,7 @@ Most CSV rows include context columns so you can slice/group results:
 - `run_dir`: run identifier you can join across CSVs if needed.
 
 ## How To Re‑generate
-- Aggregate: `python -m evaluation.uncertainty_experiments.aggregate --root evaluation/uncertainty_experiments/artifacts --out evaluation/uncertainty_experiments/derived --n-jobs 6 --jaccard-k 5 --rule-failure-tau 0.65`
+- Aggregate (core grid only → `derived/ce_paper_core_v1`): `python -m evaluation.uncertainty_experiments.aggregate --root evaluation/uncertainty_experiments/artifacts --config evaluation/uncertainty_experiments/configs/core_experiment.yaml`
 - Figures: `python -m evaluation.uncertainty_experiments.viz.make_figures --derived evaluation/uncertainty_experiments/derived --figdir evaluation/uncertainty_experiments/figures`
 
 ## Notes & Caveats
