@@ -1,5 +1,7 @@
 from typing import Any, Dict
 
+import pytest
+
 from calibrated_explanations.plugins import registry
 
 
@@ -7,7 +9,9 @@ class DummyPlugin:
     plugin_meta: Dict[str, Any] = {
         "schema_version": 1,
         "capabilities": ["explain"],
-        "name": "dummy",
+        "name": "dummy-alt",
+        "version": "0.0.1",
+        "provider": "tests",
     }
 
     def supports(self, model: Any) -> bool:
@@ -21,20 +25,22 @@ def test_register_and_find_for():
     registry.clear()
     p = DummyPlugin()
     registry.register(p)
-    assert p in registry.list_plugins()
 
     class M:
         is_dummy = True
 
-    found = registry.find_for(M())
-    assert p in found
+    assert registry.find_for_trusted(M()) == ()
+
+    registry.trust_plugin(p)
+    found = registry.find_for_trusted(M())
+    assert found == (p,)
 
 
 def test_register_validation():
     registry.clear()
 
     class Bad:
-        plugin_meta = {"name": "bad", "capabilities": ["explain"]}  # missing schema_version
+        plugin_meta = {"name": "bad", "capabilities": ["explain"]}
 
         def supports(self, model: Any) -> bool:
             return False
@@ -42,22 +48,18 @@ def test_register_validation():
         def explain(self, model: Any, X: Any, **kwargs: Any) -> Any:
             return None
 
-    try:
+    with pytest.raises(ValueError):
         registry.register(Bad())
-    except ValueError as e:
-        assert "schema_version" in str(e)
-    else:
-        assert False, "ValueError expected for missing schema_version"
 
 
 def test_unregister():
     registry.clear()
 
     class P(DummyPlugin):
-        pass
+        plugin_meta = DummyPlugin.plugin_meta | {"name": "dummy-unregister"}
 
     p = P()
     registry.register(p)
-    assert p in registry.list_plugins()
+    assert registry.list_plugins()[0]["name"] == p.plugin_meta["name"]
     registry.unregister(p)
-    assert p not in registry.list_plugins()
+    assert registry.list_plugins() == ()

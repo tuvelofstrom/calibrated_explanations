@@ -31,7 +31,13 @@ def test_make_key_is_deterministic():
 
 
 class _FakePlugin:
-    plugin_meta = {"schema_version": 1, "capabilities": ["explain"], "name": "fake"}
+    plugin_meta = {
+        "schema_version": 1,
+        "capabilities": ["explain"],
+        "name": "fake",
+        "version": "0.0.0",
+        "provider": "tests",
+    }
 
     def supports(self, model):
         return True
@@ -44,13 +50,14 @@ def test_plugin_registry_register_and_find():
     registry.clear()
     p = _FakePlugin()
     registry.register(p)
-    assert p in registry.list_plugins()
-    # find_for should return our plugin for any model
-    found = registry.find_for(object())
-    assert any(isinstance(x, _FakePlugin.__class__) or x is p for x in found)
-    registry.untrust_plugin(p)  # safe if not trusted
+    assert registry.list_plugins()[0]["name"] == "fake"
+    registry.trust_plugin(p)
+    # find_for should return our plugin for any model once trusted
+    found = registry.find_for_trusted(object())
+    assert found == (p,)
+    registry.untrust_plugin(p)
     registry.unregister(p)
-    assert p not in registry.list_plugins()
+    assert registry.list_plugins() == ()
 
 
 def test_plotspec_dataclasses_roundtrip():

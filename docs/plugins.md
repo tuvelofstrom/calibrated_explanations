@@ -1,98 +1,113 @@
-# Plugin registry and trust model
+# Plugin registry and ADR-006 trust workflow
 
-This page shows the minimal, opt-in plugin registry shipped in ADR-006 and how
-to use it today, plus a short note about the planned full workflow and the
-limits of what plugins can (and cannot) do.
+ADR-006 introduced a conservative trust model for third-party plugins. The
+registry shipped in this repository now implements that model end-to-end:
 
-## Quick start (today)
+- Plugins are discovered either explicitly (manual registration) or via the
+  ``calibrated_explanations.plugins`` entry-point group.
+- Metadata is validated for required fields (name, version, provider,
+  capabilities, optional checksum) before registration succeeds.
+- Only trusted plugins participate in automated discovery. Trust can be granted
+  via :envvar:`CE_TRUST_PLUGIN` or programmatically with
+  :func:`calibrated_explanations.plugins.trust_plugin`.
+- Warnings are emitted the first time an untrusted plugin is seen so that users
+  understand how to opt-in.
+- Diagnostic helpers expose registered metadata via
+  :func:`calibrated_explanations.plugins.registry.list_plugins` (with the option
+  to include or filter untrusted entries).
+- Optional SHA256 checksums supplied by plugin authors are verified on a
+  best-effort basis to detect tampering.
 
-The repository includes a tiny example plugin used by tests at
-`tests/plugins/example_plugin.py`.
+The sections below show how to work with the registry safely.
 
-To register and trust a plugin at runtime you can do the following:
+## Quick start
 
 ```py
-from calibrated_explanations.plugins import registry
+from calibrated_explanations.plugins import registry, TRUST_ENV_VAR
 from tests.plugins.example_plugin import PLUGIN
 
-# Register the plugin (no side-effects beyond adding to the in-process registry)
-registry.register(PLUGIN)
+# Start from a clean slate (primarily useful in tests)
+registry.clear()
 
-# Optionally mark the plugin as trusted (controls discoverability via 'trusted' helpers)
-registry.trust_plugin(PLUGIN)
+# Registering validates metadata and records diagnostics. Untrusted plugins
+# trigger a one-time warning and are excluded from trusted discovery helpers.
+record = registry.register(PLUGIN)
+print(record.trusted)  # False by default for third-party plugins
 
-# List registered plugins
+# ``list_plugins`` returns immutable metadata dictionaries that include the
+# trusted flag, registration source, and checksum verification status.
 print(registry.list_plugins())
 
-# Find plugins that claim to support a model
-registry.find_for("supported-model")
-# Find trusted plugins only
-registry.find_for_trusted("supported-model")
+# Trusted discovery will skip untrusted plugins until you opt-in explicitly.
+assert registry.find_for_trusted("supported-model") == ()
 
-# Remove or untrust when needed
+# Trust can be granted at runtime...
+registry.trust_plugin(PLUGIN)
+assert registry.find_for_trusted("supported-model") == (PLUGIN,)
+
+# ...or via environment variable to support repeatable deployments.
+# export CE_TRUST_PLUGIN="tests.example_plugin"
+
+# When finished, remove or untrust plugins as needed.
 registry.untrust_plugin(PLUGIN)
 registry.unregister(PLUGIN)
 ```
 
-Notes:
+> **Tip:** ``CE_TRUST_PLUGIN`` accepts a comma- or path-separated list of plugin
+> names. Trust granted via the environment persists across registrations and
+> suppresses untrusted warnings.
 
-- `register` validates minimal metadata (see `plugins.base.validate_plugin_meta`) and will raise `ValueError` for malformed `plugin_meta`.
-- `trust_plugin` is an explicit opt-in step; the registry does not implicitly trust third-party code.
-- The registry is in-process and performs no automatic sandboxing or network calls.
+## Entry-point discovery
 
-Important: current status
-
-- The registry and helper APIs are available, but plugins are not yet integrated into the library's main explain flows by default. Registering a plugin adds it to the in-process registry and allows discovery via `find_for`/`find_for_trusted`, but it will not automatically be invoked by core expose functions unless you explicitly call the plugin's API. This minimizes risk while the trust model and discovery semantics are stabilized.
-
-Example: invoking a registered plugin explicitly
+Package authors can expose plugins via the ``calibrated_explanations.plugins``
+setuptools entry-point group. Consumers can load these entry points with:
 
 ```py
-# after register/ trust as above
-from calibrated_explanations.plugins import registry
+from calibrated_explanations.plugins import discover_entrypoint_plugins
 
-plugin = registry.find_for("supported-model")[0]
-# Call the plugin's explain method directly (explicit invocation) — this executes plugin code in-process
-result = plugin.explain("supported-model", X=[1, 2, 3])
-print(result)
+discovered = discover_entrypoint_plugins()
+print("Registered plugins:", discovered)
 ```
 
-## Planned full-support workflow (what will be available when ADR-006 is fully realized)
+Plugins discovered this way obey the same trust rules—metadata is recorded, but
+untrusted plugins are not returned by trusted discovery helpers until the user
+opts in.
 
-When the plugin model is fully supported the plan is to provide:
+## Metadata schema
 
-- Entry-point discovery: plugins can be discovered via the `calibrated_explanations.plugins`
-  setuptools entry point group or explicit programmatic registration.
-- Environment & CLI opt-in: a user can pre-authorize plugins using environment variables (e.g., `CE_TRUST_PLUGIN=<name>`) or a one-time programmatic trust API to allow safe, repeatable runs.
-- Richer metadata: plugins will expose structured metadata (name, version, provider, capabilities, optional checksum) to help discovery and basic compatibility checks.
-- Trust controls: `list_plugins(include_untrusted=True)` for diagnostics, and `find_for_trusted(...)` to only consider trusted plugins during automated discovery.
-- Documentation and examples: published examples showing how to write a plugin that implements explanation strategies and visualization adapters.
+Plugins must define a ``plugin_meta`` mapping with the following required keys:
 
-These features are deliberately conservative: the trust model is opt-in and the registry will emit actionable warnings when untrusted plugins are present.
+- ``schema_version`` (int)
+- ``name`` (str)
+- ``version`` (str)
+- ``provider`` (str)
+- ``capabilities`` (iterable of str)
 
-## What plugins are intended to do (capabilities)
+Optional key:
 
-Plugins are intended to be small, focused extension points such as:
+- ``checksum_sha256`` (str): 64-character hexadecimal digest of the plugin
+  module file. When provided, the registry recomputes the checksum to detect
+  mismatches and reports the status via ``checksum_status`` in the diagnostic
+  metadata.
 
-- Custom explanation strategies (implement `explain(model, X, **kwargs)` and return either a domain `Explanation` or a legacy explanation dict).
-- Lightweight visualization adapters or renderers (return `PlotSpec` or render directly when requested by caller).
-- Small helper adapters that adapt model types not supported by the core library.
+If metadata is malformed a :class:`ValueError` is raised during registration.
 
-Each plugin should declare its capabilities via `plugin_meta["capabilities"]` so callers can filter available plugins by the features they need.
+## Security considerations
 
-## Limits and security considerations (important)
+- **Trust is explicit.** Loading or registering a plugin executes arbitrary
+  Python code. Trust flags do not sandbox execution; they simply gate automated
+  discovery helpers and remind users to opt in intentionally.
+- **Warnings are actionable.** The first encounter with an untrusted plugin
+  emits a warning including the environment variable and API call required to
+  trust it. Subsequent registrations of the same plugin do not spam additional
+  warnings.
+- **Checksum verification is best-effort.** If a checksum cannot be computed
+  (for example, when a module has no ``__file__`` attribute) the registry marks
+  the status as ``"unverified"`` but still records the plugin metadata.
+- **Built-in plugins auto-trust.** Plugins whose provider is
+  ``"calibrated_explanations"`` (or that are explicitly registered with
+  ``built_in=True``) are trusted automatically so that official plugins work out
+  of the box.
 
-- In-process execution only: plugins run in the same Python process as the host library. There is no sandboxing. A plugin can execute arbitrary Python code and therefore may access or modify process state.
-- Coarse trust flag: the `trusted` marker is an explicit opt-in but it is not a security boundary. Treat it as a usability guard, not a sandbox.
-- Metadata validation only: the registry validates only minimal metadata (presence and basic types). It does not verify code provenance or cryptographic signatures. Optional checksum fields may be supported later but will be best-effort.
-- API surface constraints: plugins are limited to the public plugin Protocol (see `calibrated_explanations.plugins.base.ExplainerPlugin`) — they cannot alter private internals unless those internals are explicitly exposed by the library's plugin hooks or public APIs.
-- Schema compatibility: explanation outputs should conform to the documented Explanation schema (schema v1) or to the legacy shapes accepted by adapters; otherwise consumers may fail downstream serializers or visualizers.
-
-## Recommended practices for plugin authors
-
-- Keep plugins focused and small (one responsibility: explainers vs visualizers).
-- Declare capability metadata and a stable `name` and `version` in `plugin_meta`.
-- Avoid side-effects at import time; prefer lazy initialization and explicit `register` calls.
-- Provide a small test-suite or smoke test so consumers can validate behavior.
-
----
-For more on the ADR and the trust model, see `improvement_docs/adrs/ADR-006-plugin-registry-trust-model.md`.
+For the rationale behind these decisions, see
+``improvement_docs/adrs/ADR-006-plugin-registry-trust-model.md``.

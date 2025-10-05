@@ -1,48 +1,56 @@
+import hashlib
 import importlib
 import types
 
 import pytest
 
 from calibrated_explanations.plugins import registry
+from calibrated_explanations.plugins.registry import TRUST_ENV_VAR
 
 
-def test_register_and_find_example_plugin(tmp_path, monkeypatch):
-    # Instead of writing to disk, import the packaged test plugin shipped under tests/plugins
+def test_register_requires_trust():
     mod = importlib.import_module("tests.plugins.example_plugin")
     plugin = getattr(mod, "PLUGIN")
 
-    # Start from a clean registry
     registry.clear()
 
-    # Register and find
-    registry.register(plugin)
-    all_plugins = registry.list_plugins()
-    assert plugin in all_plugins
+    with pytest.warns(UserWarning) as warn_record:
+        record = registry.register(plugin, source="unit-test")
 
-    # find_for should return plugin for supported models
-    found = registry.find_for("supported-model")
-    assert plugin in found
+    assert not record.trusted
+    assert warn_record[0].message.args[0].startswith("Plugin 'tests.example_plugin'")
 
-    # Not supported model should return empty
-    assert registry.find_for("unsupported") == ()
+    info = registry.list_plugins()
+    assert len(info) == 1
+    entry = info[0]
+    assert entry["name"] == plugin.plugin_meta["name"]
+    assert entry["trusted"] is False
+    assert entry["source"] == "unit-test"
 
-    # Mark as trusted and ensure trusted discovery returns it
+    assert registry.list_plugins(include_untrusted=False) == ()
+    assert registry.find_for_trusted("supported-model") == ()
+
+    # Manual trust enables discovery
     registry.trust_plugin(plugin)
     trusted = registry.find_for_trusted("supported-model")
-    assert plugin in trusted
+    assert trusted and trusted[0] is plugin
 
-    # Untrust and ensure it's not returned by trusted finder
+    # find_for with trusted_only defaults to False to support manual usage
+    all_found = registry.find_for("supported-model")
+    assert plugin in all_found
+
+    # Untrust removes from trusted discovery but keeps metadata visible
     registry.untrust_plugin(plugin)
-    assert plugin not in registry.find_for_trusted("supported-model")
+    assert registry.find_for_trusted("supported-model") == ()
+    assert registry.list_plugins()[0]["trusted"] is False
 
-    # Unregister removes the plugin
     registry.unregister(plugin)
-    assert plugin not in registry.list_plugins()
+    assert registry.list_plugins() == ()
 
 
 def test_validate_plugin_meta_rejects_bad_meta():
     class BadPlugin:
-        plugin_meta = {"capabilities": ["explain"]}  # missing name and schema_version
+        plugin_meta = {"capabilities": ["explain"], "name": "bad"}
 
         def supports(self, model):
             return False
@@ -55,7 +63,13 @@ def test_validate_plugin_meta_rejects_bad_meta():
 
 
 class DummyPlugin:
-    plugin_meta = {"schema_version": 1, "capabilities": ["explain"], "name": "dummy"}
+    plugin_meta = {
+        "schema_version": 1,
+        "capabilities": ["explain"],
+        "name": "dummy",
+        "version": "0.1.0",
+        "provider": "tests",
+    }
 
     def supports(self, model):
         return getattr(model, "is_dummy", False)
@@ -64,26 +78,51 @@ class DummyPlugin:
         return {"explained": True}
 
 
-def test_register_and_trust_flow(tmp_path):
-    p = DummyPlugin()
-    # ensure clean start
+def test_register_and_trust_flow(monkeypatch):
     registry.clear()
+    p = DummyPlugin()
+
     registry.register(p)
-    assert p in registry.list_plugins()
 
-    # trusting unregistered plugin raises
     with pytest.raises(ValueError):
-        registry.trust_plugin(object())
+        registry.trust_plugin("unknown")
 
-    # trust and find
     registry.trust_plugin(p)
     trusted = registry.find_for_trusted(types.SimpleNamespace(is_dummy=True))
-    assert p in trusted
+    assert trusted == (p,)
 
-    # untrust works
     registry.untrust_plugin(p)
-    trusted2 = registry.find_for_trusted(types.SimpleNamespace(is_dummy=True))
-    assert p not in trusted2
+    assert registry.find_for_trusted(types.SimpleNamespace(is_dummy=True)) == ()
 
-    # cleanup
     registry.unregister(p)
+
+
+def test_env_trust_enables_auto_trust(monkeypatch):
+    registry.clear()
+    p = DummyPlugin()
+    monkeypatch.setenv(TRUST_ENV_VAR, p.plugin_meta["name"])
+
+    record = registry.register(p, source="env-test")
+    assert record.trusted is True
+    assert registry.list_plugins(include_untrusted=False)[0]["trusted"] is True
+
+
+def test_checksum_status(monkeypatch, tmp_path):
+    registry.clear()
+
+    class ChecksumPlugin(DummyPlugin):
+        plugin_meta = DummyPlugin.plugin_meta | {"name": "checksum", "version": "0.2.0"}
+
+    plugin = ChecksumPlugin()
+    module_path = __file__
+
+    with open(module_path, "rb") as fh:
+        digest = hashlib.sha256(fh.read()).hexdigest()
+
+    plugin.plugin_meta["checksum_sha256"] = digest
+    record = registry.register(plugin)
+    assert record.checksum_status == "ok"
+
+    plugin.plugin_meta["checksum_sha256"] = "0" * 64
+    record2 = registry.register(plugin)
+    assert record2.checksum_status == "mismatch"
