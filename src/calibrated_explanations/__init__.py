@@ -1,5 +1,5 @@
 """
-Calibrated Explanations (calibrated_explanations)
+Calibrated Explanations (calibrated_explanations).
 
 is a Python package for explaining black-box models.
 
@@ -7,30 +7,19 @@ It is based on the paper "Calibrated Explanations: with Uncertainty Information 
 by Helena Löfström et al.
 """
 
+import importlib
 import logging as _logging
 
-# Expose viz namespace (internal; subject to change). Avoid importing heavy backends eagerly.
-from . import viz  # noqa: F401
-from ._interval_regressor import IntervalRegressor  # noqa: F401
-from ._VennAbers import VennAbers  # noqa: F401
-from .explanations.explanation import (
-    AlternativeExplanation,  # noqa: F401
-    FactualExplanation,  # noqa: F401
-    FastExplanation,  # noqa: F401
-)
-from .explanations.explanations import AlternativeExplanations, CalibratedExplanations  # noqa: F401
-from .utils.discretizers import (
-    BinaryEntropyDiscretizer,  # noqa: F401
-    BinaryRegressorDiscretizer,  # noqa: F401
-    EntropyDiscretizer,  # noqa: F401
-    RegressorDiscretizer,  # noqa: F401
-)
-from .utils.helper import transform_to_numeric
+# Expose viz namespace lazily via __getattr__ (avoid importing heavy backends eagerly)
+# Note: avoid eager imports of explanation, viz and discretizer modules here.
+# Those modules import heavy dependencies (numpy, pandas, plotting backends)
+# and should be loaded lazily via __getattr__ below. Importing them at
+# package import time increases startup cost significantly.
 
 # Provide a default no-op handler to avoid "No handler" warnings for library users.
 _logging.getLogger(__name__).addHandler(_logging.NullHandler())
 
-__version__ = "v0.6.0"
+__version__ = "v0.9.0"
 
 # Note: core submodules are intentionally not imported here to avoid importing
 # large backends and to make deprecation transitions explicit. We still expose
@@ -50,18 +39,60 @@ def __getattr__(name: str):
     (which would trigger deprecation emissions) while preserving the public API
     surface for users and tests.
     """
+    if name == "viz":
+        module = importlib.import_module(f"{__name__}.viz")
+        globals()[name] = module
+        return module
+    if name in {
+        "BinaryEntropyDiscretizer",
+        "BinaryRegressorDiscretizer",
+        "EntropyDiscretizer",
+        "RegressorDiscretizer",
+    }:
+        module = importlib.import_module(f"{__name__}.utils.discretizers")
+        value = getattr(module, name)
+        globals()[name] = value
+        return value
+    if name in {
+        "AlternativeExplanation",
+        "FactualExplanation",
+        "FastExplanation",
+    }:
+        module = importlib.import_module(f"{__name__}.explanations.explanation")
+        value = getattr(module, name)
+        globals()[name] = value
+        return value
+    if name in {
+        "AlternativeExplanations",
+        "CalibratedExplanations",
+    }:
+        module = importlib.import_module(f"{__name__}.explanations.explanations")
+        value = getattr(module, name)
+        globals()[name] = value
+        return value
     if name == "CalibratedExplainer":
-        from .core.calibrated_explainer import CalibratedExplainer as _C
+        from .core.calibrated_explainer import CalibratedExplainer
 
-        globals()[name] = _C
-        return _C
+        globals()[name] = CalibratedExplainer
+        return CalibratedExplainer
     if name == "WrapCalibratedExplainer":
-        from .core.wrap_explainer import WrapCalibratedExplainer as _W
+        from .core.wrap_explainer import WrapCalibratedExplainer
 
-        globals()[name] = _W
-        return _W
+        globals()[name] = WrapCalibratedExplainer
+        return WrapCalibratedExplainer
+    if name == "IntervalRegressor":
+        from .core.interval_regressor import IntervalRegressor
+
+        globals()[name] = IntervalRegressor
+        return IntervalRegressor
+    if name == "VennAbers":
+        from .core.venn_abers import VennAbers
+
+        globals()[name] = VennAbers
+        return VennAbers
+    if name == "transform_to_numeric":
+        module = importlib.import_module(f"{__name__}.utils.helper")
+        value = getattr(module, name)
+        globals()[name] = value
+        return value
     raise AttributeError(name)
-
-
-def __dir__():
-    return sorted(list(globals().keys()) + __all__)

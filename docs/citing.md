@@ -1,12 +1,15 @@
 # Citing calibrated-explanations
 
 If you use `calibrated-explanations` for a scientific publication, you are kindly requested to cite one of the following papers:
+
+For narrative summaries of the research program, benchmarks, and funding, visit the {doc}`research hub <researcher/index>` before diving into the detailed references below.
 ## Published papers
 - [Löfström, H](https://github.com/Moffran). (2023). [Trustworthy explanations: Improved decision support through well-calibrated uncertainty quantification](https://www.diva-portal.org/smash/record.jsf?pid=diva2%3A1810440&dswid=6197) (Doctoral dissertation, Jönköping University, Jönköping International Business School).
 - [Löfström, H](https://github.com/Moffran)., [Löfström, T](https://github.com/tuvelofstrom)., Johansson, U., and Sönströd, C. (2024). [Calibrated Explanations: with Uncertainty Information and Counterfactuals](https://doi.org/10.1016/j.eswa.2024.123154). Expert Systems with Applications, 1-27. https://doi.org/10.1016/j.eswa.2024.123154
 - [Löfström, T](https://github.com/tuvelofstrom)., [Löfström, H](https://github.com/Moffran)., Johansson, U., Sönströd, C., and [Matela, R](https://github.com/rudymatela). (2025). [Calibrated Explanations for Regression](https://doi.org/10.1007/s10994-024-06642-8). Machine Learning 114, 100. https://doi.org/10.1007/s10994-024-06642-8
 - [Löfström, H](https://github.com/Moffran)., [Löfström, T](https://github.com/tuvelofstrom). (2024). [Conditional Calibrated Explanations: Finding a Path Between Bias and Uncertainty](https://doi.org/10.1007/978-3-031-63787-2_17). In: Longo, L., Lapuschkin, S., Seifert, C. (eds) Explainable Artificial Intelligence. xAI 2024. Communications in Computer and Information Science, vol 2153. Springer, Cham. https://doi.org/10.1007/978-3-031-63787-2_17
 - [Löfström, T](https://github.com/tuvelofstrom)., [Löfström, H](https://github.com/Moffran)., Johansson, U. (2024). [Calibrated Explanations for Multi-class](https://raw.githubusercontent.com/mlresearch/v230/main/assets/lofstrom24a/lofstrom24a.pdf). <i>Proceedings of the Thirteenth Workshop on Conformal and Probabilistic Prediction and Applications</i>, in <i>Proceedings of Machine Learning Research</i>, PMLR 230:175-194.
+- [Löfström, T](https://github.com/tuvelofstrom)., [Rabia Yapicioglu, F](https://github.com/rabia174)., Stramiglio A., [Löfström, H](https://github.com/Moffran)., and Vitali F. (2024). [Fast Calibrated Explanations: Efficient and Uncertainty-Aware Explanations for Machine Learning Models](https://link.springer.com/chapter/10.1007/978-3-032-08333-3_16). In: Guidotti, R., Schmid, U., Longo, L. (eds) Explainable Artificial Intelligence. xAI 2025. Communications in Computer and Information Science, vol 2580. Springer, Cham. https://doi.org/10.1007/978-3-032-08333-3_16.
 
 The paper that originated the idea of `calibrated-explanations` is:
 
@@ -14,7 +17,7 @@ The paper that originated the idea of `calibrated-explanations` is:
 
 ## Preprints:
 - [Löfström, H](https://github.com/Moffran)., [Löfström, T](https://github.com/tuvelofstrom)., and [Hallberg Szabadvary, J](https://github.com/egonmedhatten). (2024). [Ensured: Explanations for Decreasing the Epistemic Uncertainty in Predictions](https://arxiv.org/abs/2410.05479). arXiv preprint arXiv:2410.05479.
-- [Löfström, T](https://github.com/tuvelofstrom)., [Rabia Yapicioglu, F](https://github.com/rabia174)., Stramiglio A., [Löfström, H](https://github.com/Moffran)., and Vitali F. (2024). [Fast Calibrated Explanations: Efficient and Uncertainty-Aware Explanations for Machine Learning Models](https://arxiv.org/abs/2410.21129). arXiv preprint arXiv:2410.21129.
+
 
 # Bibtex Entries
 ## Published papers
@@ -44,7 +47,7 @@ Bibtex entry for the original paper:
 
 ```bibtex
 @article{lofstrom2024ce_classification,
-	title = 	{Calibrated explanations: With uncertainty information and counterfactuals},
+	title = 	{Calibrated Explanations: with Uncertainty Information and Counterfactuals},
 	journal = 	{Expert Systems with Applications},
 	pages = 	{123154},
 	year = 		{2024},
@@ -52,8 +55,8 @@ Bibtex entry for the original paper:
 	doi = 		{10.1016/j.eswa.2024.123154},
 	url = 		{https://www.sciencedirect.com/science/article/pii/S0957417424000198},
 	author = 	{Helena Löfström and Tuwe Löfström and Ulf Johansson and Cecilia Sönströd},
-	keywords = 	{Explainable AI, Feature importance, Calibrated explanations, Venn-Abers, Uncertainty quantification, Counterfactual explanations},
-	abstract = 	{While local explanations for AI models can offer insights into individual predictions, such as feature importance, they are plagued by issues like instability. The unreliability of feature weights, often skewed due to poorly calibrated ML models, deepens these challenges. Moreover, the critical aspect of feature importance uncertainty remains mostly unaddressed in Explainable AI (XAI). The novel feature importance explanation method presented in this paper, called Calibrated Explanations (CE), is designed to tackle these issues head-on. Built on the foundation of Venn-Abers, CE not only calibrates the underlying model but also delivers reliable feature importance explanations with an exact definition of the feature weights. CE goes beyond conventional solutions by addressing output uncertainty. It accomplishes this by providing uncertainty quantification for both feature weights and the model’s probability estimates. Additionally, CE is model-agnostic, featuring easily comprehensible conditional rules and the ability to generate counterfactual explanations with embedded uncertainty quantification. Results from an evaluation with 25 benchmark datasets underscore the efficacy of CE, making it stand as a fast, reliable, stable, and robust solution.}
+	keywords = 	{Explainable AI, Feature importance, Calibrated explanations, Venn-Abers, Uncertainty quantification, alternative explanations},
+	abstract = 	{While local explanations for AI models can offer insights into individual predictions, such as feature importance, they are plagued by issues like instability. The unreliability of feature weights, often skewed due to poorly calibrated ML models, deepens these challenges. Moreover, the critical aspect of feature importance uncertainty remains mostly unaddressed in Explainable AI (XAI). The novel feature importance explanation method presented in this paper, called Calibrated Explanations (CE), is designed to tackle these issues head-on. Built on the foundation of Venn-Abers, CE not only calibrates the underlying model but also delivers reliable feature importance explanations with an exact definition of the feature weights. CE goes beyond conventional solutions by addressing output uncertainty. It accomplishes this by providing uncertainty quantification for both feature weights and the model’s probability estimates. Additionally, CE is model-agnostic, featuring easily comprehensible conditional rules and the ability to generate alternative explanations with embedded uncertainty quantification. Results from an evaluation with 25 benchmark datasets underscore the efficacy of CE, making it stand as a fast, reliable, stable, and robust solution.}
 }
 ```
 
@@ -70,7 +73,7 @@ Bibtex entry for the regression paper:
 	publisher =	{Springer Nature},
 	doi = 		{10.1007/s10994-024-06642-8},
 	url = 		{https://link.springer.com/article/10.1007/s10994-024-06642-8},
-	abstract =  {Artificial Intelligence (AI) methods are an integral part of modern decision support systems. The best-performing predictive models used in AI-based decision support systems lack transparency. Explainable Artificial Intelligence (XAI) aims to create AI systems that can explain their rationale to human users. Local explanations in XAI can provide information about the causes of individual predictions in terms of feature importance. However, a critical drawback of existing local explanation methods is their inability to quantify the uncertainty associated with a feature’s importance. This paper introduces an extension of a feature importance explanation method, Calibrated Explanations, previously only supporting classification, with support for standard regression and probabilistic regression, i.e., the probability that the target is below an arbitrary threshold. The extension for regression keeps all the benefits of Calibrated Explanations, such as calibration of the prediction from the underlying model with confidence intervals, uncertainty quantification of feature importance, and allows both factual and counterfactual explanations. Calibrated Explanations for regression provides fast, reliable, stable, and robust explanations. Calibrated Explanations for probabilistic regression provides an entirely new way of creating probabilistic explanations from any ordinary regression model, allowing dynamic selection of thresholds. The method is model agnostic with easily understood conditional rules. An implementation in Python is freely available on GitHub and for installation using both pip and conda, making the results in this paper easily replicable.}
+	abstract =  {Artificial Intelligence (AI) methods are an integral part of modern decision support systems. The best-performing predictive models used in AI-based decision support systems lack transparency. Explainable Artificial Intelligence (XAI) aims to create AI systems that can explain their rationale to human users. Local explanations in XAI can provide information about the causes of individual predictions in terms of feature importance. However, a critical drawback of existing local explanation methods is their inability to quantify the uncertainty associated with a feature’s importance. This paper introduces an extension of a feature importance explanation method, Calibrated Explanations, previously only supporting classification, with support for standard regression and probabilistic regression, i.e., the probability that the target is below an arbitrary threshold. The extension for regression keeps all the benefits of Calibrated Explanations, such as calibration of the prediction from the underlying model with confidence intervals, uncertainty quantification of feature importance, and allows both factual and alternative explanations. Calibrated Explanations for regression provides fast, reliable, stable, and robust explanations. Calibrated Explanations for probabilistic regression provides an entirely new way of creating probabilistic explanations from any ordinary regression model, allowing dynamic selection of thresholds. The method is model agnostic with easily understood conditional rules. An implementation in Python is freely available on GitHub and for installation using both pip and conda, making the results in this paper easily replicable.}
 }
 ```
 
@@ -107,7 +110,30 @@ Bibtex for the multi-class paper:
 	publisher = {PMLR},
 	pdf = 	 	{https://raw.githubusercontent.com/mlresearch/v230/main/assets/lofstrom24a/lofstrom24a.pdf},
 	url = 	 	{https://proceedings.mlr.press/v230/lofstrom24a.html},
-	abstract = 	{Calibrated Explanations is a recently proposed feature importance explanation method providing uncertainty quantification. It utilises Venn-Abers to generate well-calibrated factual and counterfactual explanations for binary classification. In this paper, we extend the method to support multi-class classification. The paper includes an evaluation illustrating the calibration quality of the selected multi-class calibration approach, as well as a demonstration of how the explanations can help determine which explanations to trust.}
+	abstract = 	{Calibrated Explanations is a recently proposed feature importance explanation method providing uncertainty quantification. It utilises Venn-Abers to generate well-calibrated factual and alternative explanations for binary classification. In this paper, we extend the method to support multi-class classification. The paper includes an evaluation illustrating the calibration quality of the selected multi-class calibration approach, as well as a demonstration of how the explanations can help determine which explanations to trust.}
+}
+```
+
+Bibtex entry for the fast paper:
+
+```bibtex
+@InProceedings{10.1007/978-3-032-08333-3_16,
+	author=		"L{\"o}fstr{\"o}m, Tuwe
+				and Yapicioglu, Fatima Rabia
+				and Stramiglio, Alessandra
+				and L{\"o}fstr{\"o}m, Helena
+				and Vitali, Fabio",
+	editor=		"Guidotti, Riccardo
+				and Schmid, Ute
+				and Longo, Luca",
+	title=		"Fast Calibrated Explanations: Efficient and Uncertainty-Aware Explanations for Machine Learning Models",
+	booktitle=	"Explainable Artificial Intelligence",
+	year=		"2025",
+	publisher=	"Springer Nature Switzerland",
+	address=	"Cham",
+	pages=		"340--363",
+	abstract=	"This paper introduces Fast Calibrated Explanations, an extension of an existing explanation method, Calibrated Explanations, designed for generating rapid, uncertainty-aware explanations for machine learning models. By incorporating perturbation techniques from ConformaSight, a global explanation method, into the core elements of Calibrated Explanations, we achieved significant speedups. These core elements include local feature importance with calibrated predictions, both of which retain uncertainty quantification. While the extension sacrifices some degree of detail, it excels in computational efficiency, making it ideal for high-stakes, real-time applications. Fast Calibrated Explanations applies to probabilistic explanations in classification and thresholded regression tasks, providing the probability of a target being above or below a user-defined threshold. This approach maintains the versatility of Calibrated Explanations for both classification and thresholded regression, making it suitable for a range of predictive tasks where uncertainty quantification is crucial.",
+	isbn=		"978-3-032-08333-3"
 }
 ```
 
@@ -126,20 +152,6 @@ Bibtex entry for the ensured paper:
 }
 ```
 
-Bibtex entry for the fast paper:
-
-```bibtex
-@misc{lofstrom2024ce_fast,
-	title=			{Fast Calibrated Explanations: Efficient and Uncertainty-Aware Explanations for Machine Learning Models},
-	author=			{Tuwe Löfström and Fatima Rabia Yapicioglu and Alessandra Stramiglio and Helena Löfström and Fabio Vitali},
-	year=			{2024},
-	eprint=			{2410.21129},
-	archivePrefix=	{arXiv},
-	primaryClass=	{cs.LG},
-	url=			{https://arxiv.org/abs/2410.21129},
-}
-```
-
 ## Software
 To cite this software, use the following bibtex entry:
 
@@ -149,8 +161,8 @@ To cite this software, use the following bibtex entry:
 	license = 	{BSD-3-Clause},
 	title = 	{Calibrated Explanations},
 	url = 		{https://github.com/Moffran/calibrated_explanations},
-	version = 	{v0.5.1},
-	month = 	{November},
-	year = 		{2024}
+	version = 	{v0.9.0},
+	month = 	{October},
+	year = 		{2025}
 }
 ```

@@ -9,7 +9,15 @@ from calibrated_explanations.viz.plotspec import (
 
 
 def test_lru_cache_eviction_and_get():
-    cache = LRUCache(max_items=3)
+    cache = LRUCache(
+        namespace="unit",
+        version="v1",
+        max_items=3,
+        max_bytes=None,
+        ttl_seconds=None,
+        telemetry=None,
+        size_estimator=lambda _: 1,
+    )
     cache.set("a", 1)
     cache.set("b", 2)
     cache.set("c", 3)
@@ -24,19 +32,27 @@ def test_lru_cache_eviction_and_get():
 
 
 def test_make_key_is_deterministic():
-    k1 = make_key([1, "a", 3])
-    k2 = make_key([1, "a", 3])
+    k1 = make_key("unit", "v1", [1, "a", 3])
+    k2 = make_key("unit", "v1", [1, "a", 3])
     assert k1 == k2
     assert isinstance(k1, tuple)
 
 
 class _FakePlugin:
-    plugin_meta = {"schema_version": 1, "capabilities": ["explain"], "name": "fake"}
+    plugin_meta = {
+        "schema_version": 1,
+        "capabilities": ["explain"],
+        "name": "fake",
+        "version": "0.0-test",
+        "provider": "tests",
+        "trusted": False,
+        "trust": False,
+    }
 
     def supports(self, model):
         return True
 
-    def explain(self, model, X, **kwargs):
+    def explain(self, model, x, **kwargs):
         return {"explained": True}
 
 

@@ -1,3 +1,5 @@
+> **Status note (2025-10-24):** Last edited 2025-10-24 · Archive after: Retain indefinitely as architectural record · Implementation window: Per ADR status (see Decision).
+
 # ADR-010: Core vs Evaluation Split & Distribution Strategy
 
 Status: Accepted (initial scope)
@@ -47,7 +49,7 @@ Negative / Risks:
 
 ## Adoption & Migration
 
-Phase 2S (see Action Plan):
+Phase 2S (see release plan):
 
 1. Add `[project.optional-dependencies]` groups in `pyproject.toml` for `viz`, `notebooks`, `dev`, `eval` (no behavior changes yet).
 2. Update README with install matrix and examples for extras.

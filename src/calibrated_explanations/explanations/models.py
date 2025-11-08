@@ -17,11 +17,16 @@ import numpy as np
 
 @dataclass
 class FeatureRule:
-    # feature may be a single int (simple rule) or a sequence of ints (conjunctive rule)
+    """Container describing a single feature rule within an explanation.
+
+    The ``feature`` field captures either a single feature index or a sequence of
+    indices to represent conjunctive rules emitted by legacy explainers.
+    """
+
     feature: Any
     rule: str
-    weight: Mapping[str, Any]
-    prediction: Mapping[str, Any]
+    rule_weight: Mapping[str, Any]
+    rule_prediction: Mapping[str, Any]
     instance_prediction: Mapping[str, Any] | None = None
     feature_value: Any | None = None
     is_conjunctive: bool = False
@@ -31,8 +36,11 @@ class FeatureRule:
 
 @dataclass
 class Explanation:
+    """Domain-model representation of a calibrated explanation instance."""
+
     task: str
     index: int
+    explanation_type: str
     prediction: Mapping[str, Any]
     rules: Sequence[FeatureRule]
     provenance: Mapping[str, Any] | None = None
@@ -92,16 +100,21 @@ def from_legacy_dict(idx: int, payload: Mapping[str, Any]) -> Explanation:
             fr = FeatureRule(
                 feature=feat,
                 rule=rules_block["rule"][i],  # type: ignore[index]
-                weight=weight_map,
-                prediction=predict_map,
+                rule_weight=weight_map,
+                rule_prediction=predict_map,
                 instance_prediction=None,
                 feature_value=feature_value,
                 is_conjunctive=is_conj,
                 value_str=value_str,
             )
             rules_out.append(fr)
+    explanation_type = "alternative" if "feature_predict" in payload else "factual"
     return Explanation(
-        task=str(payload.get("task", "unknown")), index=idx, prediction=prediction, rules=rules_out
+        task=str(payload.get("task", "unknown")),
+        index=idx,
+        explanation_type=explanation_type,
+        prediction=prediction,
+        rules=rules_out,
     )
 
 
