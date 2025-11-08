@@ -1,0 +1,28 @@
+{
+  "runs_found": 240,
+  "rows": {
+    "coverage_by_sigma": 288,
+    "ce_reliability_by_weight": 736,
+    "ce_ece_by_weight": 142,
+    "ce_weight_uncertainty_by_density": 144,
+    "ce_rule_direction_consistency": 288,
+    "effect_interval_coverage": 432,
+    "effect_magnitude_calibration": 144,
+    "effect_sign_consistency": 288,
+    "effect_rank_correlation": 48,
+    "effect_interval_coverage_strict": 272,
+    "rule_stability": 96,
+    "rule_faithfulness": 526,
+    "uncertainty_sensitivity_summary": 240,
+    "ece_by_ncal": 16,
+    "thresh_reg_reliability": 288,
+    "thresh_reg_rule_reliability_by_bin": 0,
+    "ece_by_density": 144,
+    "coverage_by_density": 288,
+    "correlations_de_sigma": 96,
+    "risk_coverage_classification": 1440,
+    "coverage_by_sigma_density": 864,
+    "selective_utility_curves": 26880,
+    "selective_utility_auc": 1344
+  }
+}
