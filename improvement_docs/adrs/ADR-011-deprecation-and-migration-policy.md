@@ -1,3 +1,5 @@
+> **Status note (2025-10-24):** Last edited 2025-10-24 · Archive after: Retain indefinitely as architectural record · Implementation window: Per ADR status (see Decision).
+
 # ADR-011: Deprecation & Migration Policy
 
 Status: Accepted
@@ -18,7 +20,7 @@ Adopt a simple, predictable deprecation policy:
 - Warning semantics: use `DeprecationWarning` emitted once per session per symbol via a central `deprecate(msg, *, once_key)` helper.
 - Timeline: minimum of two minor releases before removal (e.g., introduced in v0.6.x; removed no earlier than v0.8.0).
 - Scope: applies to public symbols, parameters (including aliases), module import paths, and serialized outputs.
-- Communication: maintain a migration guide with side-by-side examples; keep a status table in `ACTION_PLAN.md`.
+- Communication: maintain a migration guide with side-by-side examples; keep a status table in `RELEASE_PLAN_v1.md`.
 - Tooling: maintain an API snapshot diff tool and optional rewrite helpers for notebooks/scripts (parameter alias rewrites).
 
 ## Alternatives Considered

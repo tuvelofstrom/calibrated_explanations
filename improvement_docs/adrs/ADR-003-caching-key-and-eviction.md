@@ -1,6 +1,8 @@
+> **Status note (2025-10-24):** Last edited 2025-10-24 · Archive after: Retain indefinitely as architectural record · Implementation window: Per ADR status (see Decision).
+
 # ADR-003: Caching Key & Eviction Strategy
 
-Status: Accepted (baseline, feature-flagged)
+Status: Proposed (targeting v0.9.0 opt-in release)
 Date: 2025-08-16
 Deciders: Core maintainers
 Reviewers: TBD
@@ -25,6 +27,25 @@ Introduce a unified in-process cache layer with:
 - Config surface: environment variables + programmatic (`CacheConfig`) for max_items, max_mem_mb, enable/disable namespaces.
 - Invalidation triggers: bump version_tag automatically when: library minor version increments; strategy implementation changes recorded via a STRATEGY_REV registry; user explicit flush call.
 
+### Operational clarifications
+
+- **Default posture:** cache stays disabled unless users explicitly opt-in via `CacheConfig(enable=True)` or `CE_CACHE=on`. Shipping in v0.9.0 requires documentation to highlight the opt-in behaviour and explain rollback instructions.
+- **API contract preservation:** the cache layer MUST NOT deprecate or require callers to
+  change any `WrapCalibratedExplainer` public methods (`fit`, `calibrate`,
+  `explain_factual`, `explore_alternatives`, `predict`, `predict_proba`,
+  plotting helpers, or uncertainty/threshold options). Behaviour stays
+  additive and transparent to the published contract.
+- **Thread/process safety:** in-process cache must be guarded by a `threading.RLock` and expose a `forksafe_reset()` hook so the parallel executor (ADR-004) can clear per-process state after `fork`/`spawn`.
+- **Failure modes:** cache lookup failures should fall back to recomputation with a warning, never crash the explain path. Size/memory limit breaches surface as debug logs with aggregate counters for eviction.
+- **Telemetry contract:** emit structured metrics (`cache_hits`, `cache_misses`, `cache_evictions`, `cache_errors`) via the existing telemetry hook so the release plan's staging validation can track effectiveness. Metrics collection must be no-op when telemetry is disabled.
+- **Testing expectations:** add regression tests covering deterministic keys, eviction thresholds, telemetry emission, and opt-in/opt-out toggles. Include a performance smoke benchmark demonstrating that cache hits improve explain latency without regressing cache-disabled behaviour.
+
+### Documentation & rollout requirements
+
+- Update README, docs/plugins.md, and release notes with configuration tables, tuning guidance, and the support policy for the cache namespace taxonomy.
+- Record STRATEGY_REV identifiers in the ADR appendix and reference them from the release checklist to ensure invalidation discipline.
+- Provide migration guidance for enterprise deployments describing how cache directories/logs interact with existing observability tooling.
+
 ## Alternatives Considered
 
 1. No caching (status quo): simpler but repeated recomputation adds latency and energy cost.
@@ -47,17 +68,9 @@ Negative / Risks:
 - Approximate memory sizing may mis-estimate (document variance; allow item count cap override).
 - Additional dependency (`cachetools`, optional `pympler`).
 
-## Adoption & Migration
+## Implementation status (2025-10-07)
 
-Phase E (v0.7.0): Introduce module `calibrated_explanations.cache` behind a feature flag (disabled by default). Start with pure, high-cost idempotent steps.
-Phase later: Expand to explanation generation if stable; add micro-benchmarks and perf guards.
-
-## Open Questions
-
-- Do we need per-model namespace segmentation beyond key hashing? (Likely no initially.)
-- Whether to surface a public cache API or keep internal until stable.
-- Should TTL be activated for stochastic strategies to avoid stale randomness perception?
-
-## Decision Notes
-
-Revisit after first perf measurements post Phase 2 to adjust defaults.
+- Prototype cache scaffolding must land by v0.9.0 with unit/integration tests and
+  documentation updates per the release plan.【F:improvement_docs/RELEASE_PLAN_v1.md†L120-L176】
+- No cache layer has been introduced in v0.6.0 yet; the implementation work
+  tracks the v0.9.0 milestone and remains outstanding.【F:src/calibrated_explanations/api/config.py†L33-L52】
