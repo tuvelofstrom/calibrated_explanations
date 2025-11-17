@@ -2369,7 +2369,7 @@ class CalibratedExplainer:
                 extras={"mode": mode},
             )
 
-        # Delegate to the new explain plugin system
+        # Delegate to the new explain executor system
         # This replaces all sequential/parallel branching logic
         from .explain import explain as plugin_explain
 
@@ -2388,8 +2388,8 @@ class CalibratedExplainer:
     # plugin-based implementation under `core.explain.*`. The legacy helper
     # methods were intentionally removed to centralize parallel execution in
     # the plugin modules. Tests should exercise the plugin classes
-    # (e.g. InstanceParallelExplainPlugin, FeatureParallelExplainPlugin,
-    # SequentialExplainPlugin) rather than calling these private helpers.
+    # (e.g. InstanceParallelExplainExecutor, FeatureParallelExplainExecutor,
+    # SequentialExplainExecutor) rather than calling these private helpers.
 
     # NOTE: merge_feature_result functionality has been moved to
     # `calibrated_explanations.core.explain._helpers.merge_feature_result`.

@@ -1,41 +1,41 @@
-# Explain Plugin Architecture Refactoring Summary
+# Explain Executor Architecture Refactoring Summary
 
 ## Overview
 
-Successfully decomposed the monolithic `CalibratedExplainer.explain` method into a plugin-based architecture, as specified in the user's requirement. This refactoring addresses ADR-004 gaps and separates execution strategies cleanly.
+Successfully decomposed the monolithic `CalibratedExplainer.explain` method into an executor-based architecture, as specified in the user's requirement. This refactoring addresses ADR-004 gaps and separates execution strategies cleanly.
 
 ## Changes Implemented
 
 ### 1. New Package Structure: `core/explain/`
 
-Created a dedicated package for explain execution plugins:
+Created a dedicated package for explain executors:
 
 ```
 src/calibrated_explanations/core/explain/
 ├── __init__.py           # Plugin registry and dispatcher
-├── _base.py              # BaseExplainPlugin abstract class
+├── _base.py              # BaseExplainExecutor abstract class
 ├── _shared.py            # ExplainRequest, ExplainResponse, ExplainConfig dataclasses
 ├── _helpers.py           # Shared utility functions
-├── sequential.py         # SequentialExplainPlugin
-├── parallel_feature.py   # FeatureParallelExplainPlugin
-└── parallel_instance.py  # InstanceParallelExplainPlugin
+├── sequential.py         # SequentialExplainExecutor
+├── parallel_feature.py   # FeatureParallelExplainExecutor
+└── parallel_instance.py  # InstanceParallelExplainExecutor
 ```
 
 ### 2. Plugin Implementations
 
-#### SequentialExplainPlugin (Priority: 10)
+#### SequentialExplainExecutor (Priority: 10)
 - Single-threaded, feature-by-feature processing
 - Universal fallback that always supports any request
 - 300 lines, faithfully reproducing original sequential logic
 
-#### FeatureParallelExplainPlugin (Priority: 20)
+#### FeatureParallelExplainExecutor (Priority: 20)
 - Distributes feature tasks across executor workers
 - Requires executor enabled with `granularity='feature'`
 - 310 lines, reusing sequential setup with parallel dispatch
 
-#### InstanceParallelExplainPlugin (Priority: 30)
+#### InstanceParallelExplainExecutor (Priority: 30)
 - Partitions instances into chunks for parallel processing
-- Each chunk delegates to SequentialExplainPlugin
+- Each chunk delegates to SequentialExplainExecutor
 - Requires executor enabled with `granularity='instance'`
 - 200 lines, includes chunk combination logic
 
@@ -52,8 +52,8 @@ src/calibrated_explanations/core/explain/
 - `initialize_explanation()`, `explain_predict_step()`: Delegate to existing helpers
 - Thin wrappers to preserve existing helper abstractions
 
-#### Base Plugin (`_base.py`)
-- Abstract `supports(request, config)` predicate for plugin selection
+-#### Base Executor (`_base.py`)
+- Abstract `supports(request, config)` predicate for executor selection
 - Abstract `execute(request, config, explainer)` method for execution
 - `name` and `priority` properties for registry management
 
@@ -61,7 +61,7 @@ src/calibrated_explanations/core/explain/
 
 **Before:** 256 lines with nested branching (sequential/instance-parallel/feature-parallel)
 
-**After:** 13 lines delegating to plugin system
+**After:** 13 lines delegating to executor system
 
 ```python
 def explain(self, x, threshold=None, low_high_percentiles=(5, 95),
@@ -72,20 +72,20 @@ def explain(self, x, threshold=None, low_high_percentiles=(5, 95),
         mode = self._infer_explanation_mode()
         return self._invoke_explanation_plugin(...)
 
-    # NEW: Delegate to explain plugin system
-    from .explain import explain as plugin_explain
-    return plugin_explain(self, x, threshold, low_high_percentiles,
+    # NEW: Delegate to explain executor system
+    from .explain import explain as executor_explain
+    return executor_explain(self, x, threshold, low_high_percentiles,
                           bins, features_to_ignore,
                           _skip_instance_parallel=_skip_instance_parallel)
 ```
 
-### 5. Plugin Selection Logic
+### 5. Executor Selection Logic
 
-The `select_plugin()` function in `core/explain/__init__.py`:
+The executor selection pipeline in `core/explain/__init__.py`:
 1. Validates configuration (rejects conflicting granularity)
-2. Iterates plugins in priority order (30 → 20 → 10)
-3. Selects first plugin where `supports(request, config)` returns `True`
-4. Falls back to SequentialExplainPlugin (always supports)
+2. Iterates executors in priority order (30 → 20 → 10)
+3. Selects first executor where `supports(request, config)` returns `True`
+4. Falls back to SequentialExplainExecutor (always supports)
 
 ### 6. Behavioral Equivalence Verification
 
@@ -103,23 +103,23 @@ The `select_plugin()` function in `core/explain/__init__.py`:
 ## Benefits
 
 ### 1. Separation of Concerns
-- Orchestration (plugin selection) separated from execution (plugin logic)
-- Each plugin focuses on a single parallelism strategy
+- Orchestration (executor selection) separated from execution (executor logic)
+- Each executor focuses on a single parallelism strategy
 - Clear boundaries between sequential/feature/instance approaches
 
 ### 2. Maintainability
 - Easier to modify individual strategies without affecting others
-- Plugin interface enforces consistent contracts
+- Executor interface enforces consistent contracts
 - Shared utilities prevent code duplication
 
 ### 3. Testability
-- Plugins can be unit-tested independently
+- Executors can be unit-tested independently
 - Mock executors can test parallel paths without actual concurrency
 - Configuration guards prevent invalid combinations
 
 ### 4. Extensibility
-- New execution strategies (e.g., distributed, GPU-accelerated) can be added as plugins
-- Plugin priority system allows graceful fallback
+- New execution strategies (e.g., distributed, GPU-accelerated) can be added as executors
+- Executor priority system allows graceful fallback
 - ADR-004 compliance enables future Ray/Dask integration
 
 ## Alignment with ADRs
@@ -139,17 +139,17 @@ The `select_plugin()` function in `core/explain/__init__.py`:
 ### For Users
 - **No breaking changes**: Public API unchanged
 - `_use_plugin=True` still invokes existing explanation plugin registry
-- `_use_plugin=False` now uses new explain plugin system (behavioral equivalent)
+- `_use_plugin=False` now uses new explain executor system (behavioral equivalent)
 
 ### For Developers
-- Parallel execution strategies now live in `core/explain/` plugins
-- To add new execution strategies: implement `BaseExplainPlugin` interface
+- Parallel execution strategies now live in `core/explain/` executors
+- To add new execution strategies: implement `BaseExplainExecutor` interface
 - Helper methods remain in `core/prediction_helpers.py` and `core/calibrated_explainer.py`
 
 ## Performance Characteristics
 
 - **Sequential**: No overhead, matches original implementation exactly
-- **Feature-parallel**: Same dispatch cost as before, now isolated in dedicated plugin
+- **Feature-parallel**: Same dispatch cost as before, now isolated in dedicated executor
 - **Instance-parallel**: Chunk combination logic preserved, slightly cleaner code path
 
 ## Future Work
@@ -163,8 +163,8 @@ From the original task specification, remaining opportunities:
 2. **Request/response validation**: Add runtime validation for ExplainRequest and
    ExplainResponse to catch configuration errors earlier.
 
-3. **Plugin-specific tests**: While API-level tests pass, dedicated unit tests for
-   each plugin (with mocked executors) would improve coverage and catch edge cases.
+3. **Executor-specific tests**: While API-level tests pass, dedicated unit tests for
+   each executor (with mocked executors) would improve coverage and catch edge cases.
 
 4. **Configuration object**: Replace scattered executor/granularity checks with a
    unified `ParallelConfig` object per ADR-004 specification.
@@ -172,12 +172,12 @@ From the original task specification, remaining opportunities:
 ## Conclusion
 
 This refactoring successfully achieves the stated goals:
-- ✅ All explain logic moved into plugins
+- ✅ All explain logic moved into executors
 - ✅ CalibratedExplainer.explain is now a thin delegator
 - ✅ Sequential, feature-parallel, and instance-parallel strategies isolated
 - ✅ Behavioral parity maintained (all tests pass)
 - ✅ ADR-004 compliance for parallel execution framework
-- ✅ Foundation for future distributed execution plugins
+- ✅ Foundation for future distributed execution executors
 
 The code is cleaner, more maintainable, and ready for extension with minimal risk
 to existing functionality.

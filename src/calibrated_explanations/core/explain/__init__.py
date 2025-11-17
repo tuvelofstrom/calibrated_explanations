@@ -1,4 +1,4 @@
-"""Explain plugin system for calibrated explanations.
+"""Explain executor system for calibrated explanations.
 
 This package provides a plugin-based architecture for explain execution strategies:
 - Sequential: single-threaded feature-by-feature processing
@@ -13,28 +13,28 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, List
 
-from ._base import BaseExplainPlugin
+from ._base import BaseExplainExecutor
 from ._shared import ExplainConfig, ExplainRequest, ExplainResponse
-from .parallel_feature import FeatureParallelExplainPlugin
-from .parallel_instance import InstanceParallelExplainPlugin
-from .sequential import SequentialExplainPlugin
+from .parallel_feature import FeatureParallelExplainExecutor
+from .parallel_instance import InstanceParallelExplainExecutor
+from .sequential import SequentialExplainExecutor
 
 if TYPE_CHECKING:
     from ..calibrated_explainer import CalibratedExplainer
 
 # Global plugin registry (initialized on first import)
-_REGISTERED_PLUGINS: List[BaseExplainPlugin] = [
-    InstanceParallelExplainPlugin(),  # Priority 30: check first
-    FeatureParallelExplainPlugin(),  # Priority 20: check second
-    SequentialExplainPlugin(),  # Priority 10: fallback
+_REGISTERED_PLUGINS: List[BaseExplainExecutor] = [
+    InstanceParallelExplainExecutor(),  # Priority 30: check first
+    FeatureParallelExplainExecutor(),  # Priority 20: check second
+    SequentialExplainExecutor(),  # Priority 10: fallback
 ]
 
 
 def select_plugin(
     request: ExplainRequest,
     config: ExplainConfig,
-) -> BaseExplainPlugin:
-    """Select the appropriate explain plugin based on request and config.
+) -> BaseExplainExecutor:
+    """Select the appropriate explain executor based on request and config.
 
     Plugins are checked in priority order (highest first). The first plugin
     that returns True from its supports() method is selected.
@@ -48,7 +48,7 @@ def select_plugin(
 
     Returns
     -------
-    BaseExplainPlugin
+    BaseExplainExecutor
         The selected plugin (sequential if no others support)
 
     Raises
@@ -76,7 +76,7 @@ def select_plugin(
 
     # This should never happen since sequential plugin always supports,
     # but provide a defensive fallback
-    return SequentialExplainPlugin()
+    return SequentialExplainExecutor()
 
 
 def explain(
@@ -162,12 +162,12 @@ def explain(
 
 
 __all__ = [
-    "BaseExplainPlugin",
+    "BaseExplainExecutor",
     "ExplainConfig",
     "ExplainRequest",
     "ExplainResponse",
-    "FeatureParallelExplainPlugin",
-    "InstanceParallelExplainPlugin",
+    "FeatureParallelExplainExecutor",
+    "InstanceParallelExplainExecutor",
     "SequentialExplainPlugin",
     "explain",
     "select_plugin",
