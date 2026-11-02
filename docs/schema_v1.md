@@ -63,3 +63,9 @@ If `jsonschema` is installed, `calibrated_explanations.schema.validate_payload(o
 See the tests for round-trip examples:
 
 - `tests/unit/test_schema_validation_minimal.py::test_should_validate_golden_explanation_fixture`
+
+## Optional narrative context (planned additive extension)
+
+ADR-041 allows an optional `metadata.narrative_context` object with presentation-neutral facts **already established** by the explanation domain: task/problem type, available class labels, an existing decision threshold definition and reject/defer state where applicable. This section specifies intended semantics; emission is tracked separately and is not yet implemented. Producers must never infer missing context or rename existing fields. Old serialized payloads without this sub-key remain valid.
+
+The extension is not a prose or provider protocol and must never be described as guaranteeing the correctness of arbitrary narrative text.
