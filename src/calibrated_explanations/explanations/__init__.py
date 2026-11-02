@@ -29,6 +29,7 @@ if TYPE_CHECKING:  # pragma: no cover - import-time only
         GuardedBin,
         GuardedFactualExplanation,
     )
+    from .narrative_contract import NarrativeSpec, build_narrative_spec
     from .models import Explanation, FeatureRule, from_legacy_dict
 
 
@@ -48,6 +49,8 @@ __all__ = (
     "from_legacy_dict",
     "legacy_to_domain",
     "domain_to_legacy",
+    "NarrativeSpec",
+    "build_narrative_spec",
 )
 
 _NAME_TO_MODULE = {
@@ -66,6 +69,8 @@ _NAME_TO_MODULE = {
     "from_legacy_dict": ("models", "from_legacy_dict"),
     "legacy_to_domain": ("adapters", "legacy_to_domain"),
     "domain_to_legacy": ("adapters", "domain_to_legacy"),
+    "NarrativeSpec": ("narrative_contract", "NarrativeSpec"),
+    "build_narrative_spec": ("narrative_contract", "build_narrative_spec"),
 }
 
 
