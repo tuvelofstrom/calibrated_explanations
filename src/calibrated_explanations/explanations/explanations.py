@@ -1602,6 +1602,10 @@ class CalibratedExplanations:  # pylint: disable=too-many-instance-attributes
         output_format="dataframe",
         conjunction_separator=" AND ",
         align_weights=True,
+        *,
+        rnk_metric=None,
+        rnk_weight=0.5,
+        filter_top=10,
         **kwargs,
     ):
         """
@@ -1665,6 +1669,11 @@ class CalibratedExplanations:  # pylint: disable=too-many-instance-attributes
         :meth:`.plot` : Plot explanations with various visual styles.
         """
         reject_unsupported_narrative_kwargs(kwargs, surface=f"{type(self).__name__}.to_narrative")
+        if not self.is_alternative() and rnk_metric not in (None, "feature_weight"):
+            raise ValidationError(
+                "Factual and FAST narratives only support feature_weight ranking",
+                details={"param": "rnk_metric", "value": rnk_metric},
+            )
 
         from ..viz.narrative_plugin import NarrativePlotPlugin
 
@@ -1679,6 +1688,9 @@ class CalibratedExplanations:  # pylint: disable=too-many-instance-attributes
             output=output_format,
             conjunction_separator=conjunction_separator,
             align_weights=align_weights,
+            rnk_metric=rnk_metric,
+            rnk_weight=rnk_weight,
+            filter_top=filter_top,
             **kwargs,
         )
 
@@ -2709,6 +2721,9 @@ class MultiClassCalibratedExplanations(CalibratedExplanations):
             "conjunction_separator", kwargs.get("conjunction_separator", " AND ")
         )
         align_weights = kwargs.pop("align_weights", kwargs.get("align_weights", True))
+        rnk_metric = kwargs.pop("rnk_metric", None)
+        rnk_weight = kwargs.pop("rnk_weight", 0.5)
+        filter_top = kwargs.pop("filter_top", 10)
         reject_unsupported_narrative_kwargs(kwargs, surface=f"{type(self).__name__}.to_narrative")
 
         # Helper to convert a per-class explanation to the desired intermediate dict
@@ -2723,6 +2738,9 @@ class MultiClassCalibratedExplanations(CalibratedExplanations):
                         output_format="dict",
                         conjunction_separator=conjunction_separator,
                         align_weights=align_weights,
+                        rnk_metric=rnk_metric,
+                        rnk_weight=rnk_weight,
+                        filter_top=filter_top,
                         **kwargs,
                     )
                 except (AttributeError, TypeError, ValueError, KeyError):
