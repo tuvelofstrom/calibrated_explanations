@@ -94,6 +94,9 @@ class NarrativePlotPlugin:
         output: str = "dataframe",
         conjunction_separator: str = " AND ",
         align_weights: bool = True,
+        rnk_metric: str | None = None,
+        rnk_weight: float = 0.5,
+        filter_top: int | None = None,
         **kwargs,
     ) -> Union[Any, str, List[Dict[str, Any]]]:
         """Generate narratives for a collection of explanations.
@@ -247,6 +250,9 @@ class NarrativePlotPlugin:
                         feature_names=feature_names,
                         conjunction_separator=conjunction_separator,
                         align_weights=align_weights,
+                        rnk_metric=rnk_metric,
+                        rnk_weight=rnk_weight,
+                        filter_top=filter_top,
                     )
                     row[f"{explanation_type}_explanation_{level}"] = narrative
                 except BaseException:
