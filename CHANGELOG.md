@@ -22,6 +22,28 @@
 
 ### Changed
 
+- **Canonical rule ranking (ADR-042, #204, v1.1.0):** Factual and FAST rules
+  now rank by absolute feature weight, with narrower weight intervals and
+  native rule index breaking ties. Alternative rules rank by the ensured score
+  (default weight 0.5), with `feature_weight` available as explicit opt-in and
+  `uncertainty` meaning ensured with zero probability weight. Consistent
+  strongest-first selection is applied to explanations, plots, narrative
+  facts, offline narratives and conjunction candidates. The public
+  `rank_features` compatibility adapter still returns strongest-last indices.
+  Ranking keeps non-finite reported values intact but orders NaN scores last
+  and unknown widths as least certain. Conjunction candidate sets and rule
+  ordering can change; rerun any workflows relying on the v1.0.x order.
+  `to_narrative` and `add_conjunctions` accept `rnk_metric` and
+  `rnk_weight`; narratives also accept `filter_top`. Match conjunction
+  ranking arguments to those subsequently used in plots/narratives.
+  Plain regression ensured ranking uses raw, unnormalized target units, so
+  the score's scale and direction require task-specific interpretation.
+  Rankings have no distribution-free stability or correctness guarantee.
+  Non-feature-weight factual plot ranking is deprecated (still available
+  through the v1.x compatibility period); legacy non-positive
+  `rank_features(num_to_show=...)` behavior also warns and remains until
+  the ADR-011 removal window.
+
 - **One-sided CPS intervals now expose unbounded endpoints (#237, v1.1.0):**
   percentile requests with an open end return `-inf` or `inf` instead of a
   finite calibration-target minimum or maximum. Existing interval keys and

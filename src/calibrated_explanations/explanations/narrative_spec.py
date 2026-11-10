@@ -21,7 +21,8 @@ from dataclasses import dataclass, field
 from types import MappingProxyType
 from typing import Any, Mapping
 
-from ..utils import calculate_metrics, median_containment_sides
+from ..utils import median_containment_sides
+from ..utils.ranking import rank_rule_indices
 from ..utils.exceptions import ValidationError
 
 NARRATIVE_SPEC_VERSION = "1.0.0"
@@ -416,76 +417,60 @@ def _canonical_order(
     rnk_metric: str | None,
     rnk_weight: float,
 ) -> tuple[dict[str, Any], list[NarrativeRuleFact]]:
-    """Order rules strongest first by the ADR-042 D1, D5 and D6 total order.
-
-    #204 (v1.1.0 T9) makes one internal implementation authoritative for every
-    ranking consumer; this function is to delegate to it once that lands.
-    """
-    if explanation_type != "alternative":
-        if rnk_metric not in (None, "feature_weight"):
+    """Delegate ordering to the single ADR-042 rank authority (T9/#204)."""
+    is_alternative = explanation_type == "alternative"
+    metric = "ensured" if rnk_metric is None else rnk_metric
+    if is_alternative and metric in ("ensured", "uncertainty"):
+        if task == "regression" and problem_type is None:
             raise ValidationError(
-                "Factual and FAST explanations are ranked by feature_weight only (ADR-042 D11)",
-                details={"param": "rnk_metric", "value": rnk_metric},
+                "The ensured ranking of a regression alternative needs "
+                "metadata.narrative_context to know whether it is thresholded",
+                details={"param": "rnk_metric", "value": metric},
             )
 
-        def factual_key(item: tuple[int, NarrativeRuleFact]):
-            index, fact = item
-            width = abs(fact.weight.high - fact.weight.low)
-            return (-abs(fact.weight.predict), _width(width, fact.weight), index)
-
-        ordered = sorted(enumerate(rules), key=factual_key)
-        return {"metric": "feature_weight"}, [fact for _, fact in ordered]
-
-    metric = rnk_metric or "ensured"
-    if metric not in ("ensured", "feature_weight", "uncertainty"):
-        raise ValidationError(
-            "Unknown ranking metric for alternative explanations",
-            details={"param": "rnk_metric", "value": rnk_metric},
-        )
-
-    def uncertainty(fact: NarrativeRuleFact) -> float:
-        interval = fact.prediction
-        return _width(interval.high - interval.low, interval)
-
-    if metric == "feature_weight":
-        ordered = sorted(
-            enumerate(rules),
-            key=lambda item: (-abs(item[1].weight.predict), uncertainty(item[1]), item[0]),
-        )
-        return {"metric": "feature_weight"}, [fact for _, fact in ordered]
-
-    weight = 0.0 if metric == "uncertainty" else float(rnk_weight)
-    if task == "classification" or problem_type == "probabilistic_regression":
-        oriented = prediction.predict > 0.5
-    elif problem_type == "regression":
-        oriented = None
+    native_rules = {
+        "weight": [fact.weight.predict for fact in rules],
+        # Placeholder values for open percentiles are not calibrated bounds.
+        # Use infinities in temporary rank input only; the spec keeps values
+        # exactly as serialized.
+        "weight_low": [
+            fact.weight.low if fact.weight.low_bounded else -math.inf for fact in rules
+        ],
+        "weight_high": [
+            fact.weight.high if fact.weight.high_bounded else math.inf for fact in rules
+        ],
+        "predict": [
+            fact.prediction.predict if fact.prediction is not None else 0.0 for fact in rules
+        ],
+        "predict_low": [
+            (
+                fact.prediction.low if fact.prediction.low_bounded else -math.inf
+            ) if fact.prediction is not None else 0.0
+            for fact in rules
+        ],
+        "predict_high": [
+            (
+                fact.prediction.high if fact.prediction.high_bounded else math.inf
+            ) if fact.prediction is not None else 0.0
+            for fact in rules
+        ],
+    }
+    order = rank_rule_indices(
+        native_rules,
+        explanation_type=explanation_type,
+        base_predict=prediction.predict,
+        probability=task == "classification" or problem_type == "probabilistic_regression",
+        rnk_metric=rnk_metric,
+        rnk_weight=rnk_weight,
+    )
+    if not is_alternative or metric == "feature_weight":
+        ranking = {"metric": "feature_weight"}
     else:
-        raise ValidationError(
-            "The ensured ranking of a regression alternative needs "
-            "metadata.narrative_context to know whether it is thresholded",
-            details={"param": "rnk_metric", "value": metric},
-        )
-
-    def score(fact: NarrativeRuleFact) -> float:
-        p = fact.prediction.predict
-        if oriented is False:
-            p = 1.0 - p
-        return float(calculate_metrics(uncertainty(fact), p, w=weight, metric="ensured"))
-
-    def ensured_key(item: tuple[int, NarrativeRuleFact]):
-        index, fact = item
-        value = score(fact)
-        return (math.isnan(value), 0.0 if math.isnan(value) else -value, uncertainty(fact), index)
-
-    ordered = sorted(enumerate(rules), key=ensured_key)
-    return {"metric": "ensured", "weight": weight}, [fact for _, fact in ordered]
-
-
-def _width(width: float, interval: NarrativeInterval) -> float:
-    # ADR-042 D6: an unknown or unbounded width ranks as maximally uncertain.
-    if not _bounded(interval) or not math.isfinite(width):
-        return math.inf
-    return width
+        ranking = {
+            "metric": "ensured",
+            "weight": 0.0 if metric == "uncertainty" else float(rnk_weight),
+        }
+    return ranking, [rules[index] for index in order]
 
 
 def _freeze(value: Any) -> Any:
