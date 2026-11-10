@@ -84,6 +84,22 @@ Design patterns:
 
 ---
 
+### Rule ranking contract (ADR-042, v1.1.0)
+
+Canonical rule order must come from
+`utils.ranking.rank_rule_indices` or `canonical_rank_indices`.
+Factual and FAST rule strength is absolute calibrated feature weight;
+alternative rule strength defaults to ensured with `rnk_weight=0.5`.
+This is an ordering and selection contract, not a new calibration method.
+Rank strongest first, break primary ties by narrower width then native
+rule-table index, handle NaN/infinity deterministically, and apply
+filtering separately from top-k selection. `rank_features` is a public
+legacy adapter that deliberately returns strongest-last and retains
+deprecated nonpositive `num_to_show` behavior during the migration
+window. Never introduce a second ad-hoc rank key in plots, narratives,
+conjunction selection, or `NarrativeSpec`. Existing serialized rules
+remain in native order.
+
 ## 4. Testing Standards
 
 > Full guidance: `tests/README.md`
