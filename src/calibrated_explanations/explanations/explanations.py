@@ -3315,6 +3315,7 @@ class MultiClassCalibratedExplanations(CalibratedExplanations):
                     uncertainty=uncertainty,
                     style_override=style_override,
                     kwargs=kwargs,
+                    filter_top=filter_top,
                 )
 
                 if payload is None:
@@ -3396,6 +3397,7 @@ class MultiClassCalibratedExplanations(CalibratedExplanations):
         uncertainty: bool,
         style_override: Any,
         kwargs: Mapping[str, Any],
+        filter_top: int | None = None,
     ) -> dict | None:
         """Construct the non-render payload for plotting factual multiclass explanations.
 
@@ -3431,7 +3433,11 @@ class MultiClassCalibratedExplanations(CalibratedExplanations):
 
         predicts = [getattr(ex, "prediction", None) for ex in class_explanations_list]
 
-        filter_top = [len(factual["weight"]) for factual in list(factuals.values())]
+        filter_top = [
+            len(factual["weight"]) if filter_top is None
+            else min(len(factual["weight"]), filter_top)
+            for factual in list(factuals.values())
+        ]
         if len(filter_top) <= 0:
             return None
 
@@ -3459,19 +3465,25 @@ class MultiClassCalibratedExplanations(CalibratedExplanations):
             for factual in list(factuals.values())
         ]
 
-        first_explanation = next(iter(class_explanations.values()))
-        rank_features = getattr(first_explanation, "rank_features", None)
-        if not callable(rank_features):
-            rank_features = first_explanation._rank_features
+        from ..utils.ranking import canonical_rank_indices, rank_rule_indices
 
         if rnk_metric == "feature_weight":
             features_list_to_plot = [
-                rank_features(factual["weight"], width=width, num_to_show=num_to_show)
-                for factual, width, num_to_show in zip(
-                    list(factuals.values()), widths, filter_top, strict=False
+                rank_rule_indices(factual, explanation_type="factual", top_k=num_to_show)
+                for factual, num_to_show in zip(
+                    list(factuals.values()), filter_top, strict=False
                 )
             ]
         else:
+            warnings.warn(
+                "Non-feature_weight factual plot ranking is deprecated; "
+                "use rnk_metric='feature_weight'.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+            if rnk_metric == "uncertainty":
+                rnk_metric = "ensured"
+                rnk_weight = 1.0  # preserve legacy factual plot behavior until v2
             rankings = [
                 calculate_metrics(
                     uncertainty=[
@@ -3485,7 +3497,7 @@ class MultiClassCalibratedExplanations(CalibratedExplanations):
                 for factual in list(factuals.values())
             ]
             features_list_to_plot = [
-                rank_features(width=ranking, num_to_show=num_to_show)
+                canonical_rank_indices(ranking, top_k=num_to_show)
                 for ranking, num_to_show in zip(rankings, filter_top, strict=False)
             ]
 
