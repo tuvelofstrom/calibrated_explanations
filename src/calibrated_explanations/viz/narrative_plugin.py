@@ -230,6 +230,34 @@ class NarrativePlotPlugin:
         # Initialize narrative generator
         narrator = NarrativeGenerator(template)
 
+        # Do not silently render validation failures as narrative error text.
+        # The legacy renderer catches errors per level, so validate ranking
+        # parameters at the public plugin boundary instead.
+        from ..utils.exceptions import ValidationError
+        from ..utils.ranking import canonical_rank_indices
+
+        canonical_rank_indices([], top_k=filter_top)
+        if explanation_type != "alternative" and rnk_metric not in (
+            None, "feature_weight"
+        ):
+            raise ValidationError(
+                "Factual narratives only support feature_weight ranking",
+                details={"param": "rnk_metric", "value": rnk_metric},
+            )
+        if explanation_type == "alternative":
+            import math
+
+            if rnk_metric not in (None, "ensured", "feature_weight", "uncertainty"):
+                raise ValidationError(
+                    "Unknown narrative ranking metric",
+                    details={"param": "rnk_metric", "value": rnk_metric},
+                )
+            if not math.isfinite(float(rnk_weight)) or not -1 <= float(rnk_weight) <= 1:
+                raise ValidationError(
+                    "rnk_weight must be finite and in [-1, 1]",
+                    details={"param": "rnk_weight", "value": repr(rnk_weight)},
+                )
+
         # Generate narratives for each explanation
         results = []
         for i, explanation in enumerate(explanations.explanations):
