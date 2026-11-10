@@ -430,16 +430,29 @@ def _canonical_order(
 
     native_rules = {
         "weight": [fact.weight.predict for fact in rules],
-        "weight_low": [fact.weight.low for fact in rules],
-        "weight_high": [fact.weight.high for fact in rules],
+        # Placeholder values for open percentiles are not calibrated bounds.
+        # Use infinities in temporary rank input only; the spec keeps values
+        # exactly as serialized.
+        "weight_low": [
+            fact.weight.low if fact.weight.low_bounded else -math.inf for fact in rules
+        ],
+        "weight_high": [
+            fact.weight.high if fact.weight.high_bounded else math.inf for fact in rules
+        ],
         "predict": [
             fact.prediction.predict if fact.prediction is not None else 0.0 for fact in rules
         ],
         "predict_low": [
-            fact.prediction.low if fact.prediction is not None else 0.0 for fact in rules
+            (
+                fact.prediction.low if fact.prediction.low_bounded else -math.inf
+            ) if fact.prediction is not None else 0.0
+            for fact in rules
         ],
         "predict_high": [
-            fact.prediction.high if fact.prediction is not None else 0.0 for fact in rules
+            (
+                fact.prediction.high if fact.prediction.high_bounded else math.inf
+            ) if fact.prediction is not None else 0.0
+            for fact in rules
         ],
     }
     order = rank_rule_indices(
