@@ -2131,6 +2131,11 @@ class FactualExplanation(CalibratedExplanation):
         ``"skipped"`` (:class:`~collections.Counter`), and
         ``"predict_errors"`` (list of up to 5 captured exception messages).
         """
+        if kwargs.get("rnk_metric") not in (None, "feature_weight"):
+            raise ValidationError(
+                "Factual conjunctions only support feature_weight ranking",
+                details={"param": "rnk_metric", "value": kwargs.get("rnk_metric")},
+            )
         use_batched = kwargs.get("_use_batched", True)
         limit_outer_to_ranked = kwargs.get("_limit_outer_to_ranked", False)
         dedupe_by_feature_only = kwargs.get("_dedupe_by_feature_only", True)
@@ -2226,30 +2231,17 @@ class FactualExplanation(CalibratedExplanation):
             weights_array = state_helper.get_weights()
             width_array = state_helper.get_widths()
 
-            top_n = min(num_rules, n_top_features)
-            top_conjunctives = list(
-                self.rank_features(
-                    weights_array,
-                    width=width_array,
-                    num_to_show=max(2, top_n) if num_rules >= 2 else top_n,
-                )
+            top_conjunctives = self._canonical_rule_indices(
+                state_helper.state,
+                top_k=n_top_features,
             )
-            if not top_conjunctives and num_rules > 0:
-                top_conjunctives = list(range(num_rules))
 
             # Determine outer loop candidates
             # Legacy behavior: iterate all features
             if limit_outer_to_ranked:
-                num_outer = min(num_rules, n_top_features)
-                outer_indices = list(
-                    self.rank_features(
-                        base_weight_array,
-                        width=base_width_array if base_width_array.size else None,
-                        num_to_show=max(2, num_outer) if num_rules >= 2 else num_outer,
-                    )
+                outer_indices = self._canonical_rule_indices(
+                    factual, top_k=n_top_features
                 )
-                if not outer_indices and num_rules > 0:
-                    outer_indices = list(range(num_rules))
             else:
                 outer_indices = range(len(factual["feature"]))
 
@@ -3728,7 +3720,11 @@ class AlternativeExplanation(CalibratedExplanation):
             from .legacy_conjunctions import add_conjunctions_alternative_legacy
 
             add_conjunctions_alternative_legacy(
-                self, n_top_features=n_top_features, max_rule_size=max_rule_size
+                self,
+                n_top_features=n_top_features,
+                max_rule_size=max_rule_size,
+                rnk_metric=kwargs.get("rnk_metric"),
+                rnk_weight=kwargs.get("rnk_weight", 0.5),
             )
             return self
 
@@ -3801,30 +3797,22 @@ class AlternativeExplanation(CalibratedExplanation):
             weights_array = state_helper.get_weights()
             width_array = state_helper.get_widths()
 
-            top_n = min(num_rules, n_top_features)
-            top_conjunctives = list(
-                self.rank_features(
-                    weights_array,
-                    width=width_array,
-                    num_to_show=max(2, top_n) if num_rules >= 2 else top_n,
-                )
+            top_conjunctives = self._canonical_rule_indices(
+                state_helper.state,
+                rnk_metric=kwargs.get("rnk_metric"),
+                rnk_weight=kwargs.get("rnk_weight", 0.5),
+                top_k=n_top_features,
             )
-            if not top_conjunctives and num_rules > 0:
-                top_conjunctives = list(range(num_rules))
 
             # Determine outer loop candidates
             # Legacy behavior: iterate all features
             if limit_outer_to_ranked:
-                num_outer = min(num_rules, n_top_features)
-                outer_indices = list(
-                    self.rank_features(
-                        base_weight_array,
-                        width=base_width_array if base_width_array.size else None,
-                        num_to_show=max(2, num_outer) if num_rules >= 2 else num_outer,
-                    )
+                outer_indices = self._canonical_rule_indices(
+                    alternative,
+                    rnk_metric=kwargs.get("rnk_metric"),
+                    rnk_weight=kwargs.get("rnk_weight", 0.5),
+                    top_k=n_top_features,
                 )
-                if not outer_indices and num_rules > 0:
-                    outer_indices = list(range(num_rules))
             else:
                 outer_indices = range(len(alternative["feature"]))
 
