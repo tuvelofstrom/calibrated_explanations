@@ -2496,6 +2496,12 @@ class FactualExplanation(CalibratedExplanation):
         self._check_preconditions()
         predict = self.prediction
         num_features_to_show = len(factual["weight"])
+        from ..utils.ranking import canonical_rank_indices
+
+        canonical_rank_indices([0.0] * num_features_to_show, top_k=filter_top)
+        from ..utils.ranking import canonical_rank_indices
+
+        canonical_rank_indices([0.0] * num_features_to_show, top_k=filter_top)
         if filter_top is None:
             filter_top = num_features_to_show
         filter_top = np.min([num_features_to_show, filter_top])
@@ -4093,6 +4099,9 @@ class AlternativeExplanation(CalibratedExplanation):
             (len(alternative["weight"])),
         )
         num_rules = len(alternative["rule"])
+        from ..utils.ranking import canonical_rank_indices
+
+        canonical_rank_indices([0.0] * num_rules, top_k=filter_top)
         if filter_top is None:
             filter_top = num_rules
         num_to_show_ = np.min([num_rules, filter_top])
