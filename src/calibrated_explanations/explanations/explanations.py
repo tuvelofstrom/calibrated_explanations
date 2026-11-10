@@ -1499,6 +1499,9 @@ class CalibratedExplanations:  # pylint: disable=too-many-instance-attributes
                     template_path=template_path,
                     expertise_level=expertise_level,
                     output_format=output_format,
+                    rnk_metric=rnk_metric,
+                    rnk_weight=rnk_weight,
+                    filter_top=filter_top,
                     **kwargs,
                 )
 
@@ -1507,6 +1510,9 @@ class CalibratedExplanations:  # pylint: disable=too-many-instance-attributes
                 template_path=template_path,
                 expertise_level=expertise_level,
                 output=output_format,
+                rnk_metric=rnk_metric,
+                rnk_weight=rnk_weight,
+                filter_top=filter_top,
                 **kwargs,
             )
         _log_forwarded_plot_kwargs(
