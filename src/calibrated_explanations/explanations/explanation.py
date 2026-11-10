@@ -531,6 +531,23 @@ class CalibratedExplanation(ABC):
             reversed(canonical_rank_indices(primary, ties, top_k=num_to_show))
         )
 
+    def _canonical_rule_indices(
+        self, rules, *, rnk_metric=None, rnk_weight=0.5, top_k=None
+    ):
+        """Rank the native rule table using the single ADR-042 authority."""
+        alternative = isinstance(self, AlternativeExplanation)
+        raw = self.prediction["predict"]
+        base_predict = float(np.asarray(raw).reshape(-1)[0]) if alternative else None
+        return rank_rule_indices(
+            rules,
+            explanation_type="alternative" if alternative else "factual",
+            base_predict=base_predict,
+            probability=self.get_mode() == "classification" or self.is_thresholded(),
+            rnk_metric=rnk_metric,
+            rnk_weight=rnk_weight,
+            top_k=top_k,
+        )
+
     def is_one_sided(self) -> bool:
         """Test if a regression explanation is one-sided.
 
@@ -1928,13 +1945,14 @@ class FactualExplanation(CalibratedExplanation):
                 )
             )
 
-        # Stable sort by absolute impact
         if sort:
-            canonical_rules.sort(key=lambda r: (-abs(r.impact), r.text))
-
+            order = self._canonical_rule_indices(rules_dict, top_k=top_k)
+            return [canonical_rules[i] for i in order]
         if top_k is not None:
-            canonical_rules = canonical_rules[:top_k]
+            from ..utils.ranking import canonical_rank_indices
 
+            canonical_rank_indices([0.0] * len(canonical_rules), top_k=top_k)
+            canonical_rules = canonical_rules[:top_k]
         return canonical_rules
 
     # -- Convenience retrieval API -------------------------------------------------
@@ -2657,14 +2675,10 @@ class AlternativeExplanation(CalibratedExplanation):
             f"{alternative['base_predict'][0]:5.3f} [{alternative['base_predict_low'][0]:5.3f}, {alternative['base_predict_high'][0]:5.3f}]",
             f"{'Value':6}: {'Feature':40s} {'Prediction':10} [{' Low':6}, {' High':6}]",
         ]
-        feature_order = self.rank_features(
-            alternative["weight"],
-            width=np.array(alternative["weight_high"]) - np.array(alternative["weight_low"]),
-            num_to_show=len(alternative["rule"]),
-        )
+        feature_order = self._canonical_rule_indices(alternative)
         output.extend(
             f"{alternative['value'][f]:6}: {alternative['rule'][f]:40s} {alternative['predict'][f]:>6.3f}     [{alternative['predict_low'][f]:>6.3f}, {alternative['predict_high'][f]:>6.3f}]"
-            for f in reversed(feature_order)
+            for f in feature_order
         )
         return "\n".join(output) + "\n"
 
@@ -2733,13 +2747,14 @@ class AlternativeExplanation(CalibratedExplanation):
                 )
             )
 
-        # Stable sort by absolute impact
         if sort:
-            canonical_rules.sort(key=lambda r: (-abs(r.impact), r.text))
-
+            order = self._canonical_rule_indices(rules_dict, top_k=top_k)
+            return [canonical_rules[i] for i in order]
         if top_k is not None:
-            canonical_rules = canonical_rules[:top_k]
+            from ..utils.ranking import canonical_rank_indices
 
+            canonical_rank_indices([0.0] * len(canonical_rules), top_k=top_k)
+            canonical_rules = canonical_rules[:top_k]
         return canonical_rules
 
     def build_rules_payload(self) -> Dict[str, Any]:
