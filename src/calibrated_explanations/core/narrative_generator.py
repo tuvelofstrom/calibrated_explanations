@@ -538,11 +538,11 @@ class NarrativeGenerator:
         # retain zero/NaN-impact rules instead of silently dropping selected
         # rules (ADR-042 D7 and D16). Do not assign them a sign they lack.
         if neutral_features:
-            details = "\\n".join(
+            details = "\n".join(
                 f"- {r.get('rule', '')} (weight: {r.get('weight')})"
                 for r in neutral_features
             )
-            narrative += "\\nRules without a signed impact:\\n" + details
+            narrative += "\nRules without a signed impact:\n" + details
 
         return narrative
 
