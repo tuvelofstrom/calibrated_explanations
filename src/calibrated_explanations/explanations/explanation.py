@@ -4221,15 +4221,11 @@ class FastExplanation(CalibratedExplanation):
             f"   {fast['base_predict'][0]:5.3f}   [{fast['base_predict_low'][0]:5.3f}, {fast['base_predict_high'][0]:5.3f}]",
             f"{'Value':6}: {'Feature':40s} {'Weight':6} [{' Low':6}, {' High':6}]",
         ]
-        feature_order = self.rank_features(
-            fast["weight"],
-            width=np.array(fast["weight_high"]) - np.array(fast["weight_low"]),
-            num_to_show=len(fast["rule"]),
-        )
+        feature_order = self._canonical_rule_indices(fast)
         # feature_order = range(len(fast['rule']))
         output.extend(
             f"{fast['value'][f]:6}: {fast['rule'][f]:40s} {fast['weight'][f]:>6.3f} [{fast['weight_low'][f]:>6.3f}, {fast['weight_high'][f]:>6.3f}]"
-            for f in reversed(feature_order)
+            for f in feature_order
         )
         # sum_weights = np.sum((fast['weight']))
         # sum_weights_low = np.sum((fast['weight_low']))
