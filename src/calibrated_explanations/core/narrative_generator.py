@@ -491,6 +491,11 @@ class NarrativeGenerator:
         selected = [flat_rules[i] for i in ordered_indices]
         pos_features = [r for r in selected if r.get("weight", 0) > 0]
         neg_features = [r for r in selected if r.get("weight", 0) < 0]
+        neutral_features = [
+            r for r in selected if not (
+                r.get("weight", 0) > 0 or r.get("weight", 0) < 0
+            )
+        ]
 
         # For advanced level: split by prediction interval width
         # (Exclude standard regression because absolute width threshold 0.20 is not applicable)
@@ -528,6 +533,16 @@ class NarrativeGenerator:
                 conjunction_separator,
                 align_weights,
             )
+
+        # The legacy templates have only positive/negative sections. Explicitly
+        # retain zero/NaN-impact rules instead of silently dropping selected
+        # rules (ADR-042 D7 and D16). Do not assign them a sign they lack.
+        if neutral_features:
+            details = "\\n".join(
+                f"- {r.get('rule', '')} (weight: {r.get('weight')})"
+                for r in neutral_features
+            )
+            narrative += "\\nRules without a signed impact:\\n" + details
 
         return narrative
 
