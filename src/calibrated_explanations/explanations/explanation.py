@@ -57,6 +57,7 @@ from ..utils.exceptions import CalibratedError, ValidationError
 from ..utils.helper import assign_threshold as normalize_threshold
 from ..utils.int_utils import collect_ints
 from ._conjunctions import ConjunctionState
+from ..utils.ranking import rank_rule_indices
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -483,71 +484,52 @@ class CalibratedExplanation(ABC):
         return ignored
 
     def rank_features(self, feature_weights=None, width=None, num_to_show=None):
-        """Rank the features based on their weights.
+        """Return indices in ascending strength (public legacy ADR-042 adapter).
 
-        Parameters
-        ----------
-        feature_weights : dict, optional
-            A mapping of feature weights.
-        width : dict, optional
-            A mapping of feature widths.
-        num_to_show : int, optional
-            The number of features to show.
+        With feature weights the factual key uses magnitude and interval-width
+        ties. When only width is provided it represents a precomputed score,
+        not an uncertainty tie-break. New internal consumers should use the
+        canonical strongest-first ranking authority directly.
 
-        Returns
-        -------
-        list
-            The sorted indices of the features.
+        In v1.1.0, non-positive counts retain their v1.0.x result with a
+        DeprecationWarning; D8 semantics start in the second minor release.
         """
-        if not (feature_weights is not None or width is not None):
-            from ..utils.exceptions import ValidationError
+        from ..utils.ranking import canonical_rank_indices
 
+        if feature_weights is None and width is None:
             raise ValidationError(
-                "Either feature_weights or width (or both) must not be None",
-                details={
-                    "param": "feature_weights/width",
-                    "requirement": "at least one must be provided",
-                    "feature_weights": feature_weights is not None,
-                    "width": width is not None,
-                },
+                "Either feature_weights or width must be provided",
+                details={"param": "feature_weights/width"},
             )
-        num_features = len(feature_weights) if feature_weights is not None else len(width)
-        if num_to_show is None or num_to_show > num_features:
-            num_to_show = num_features
-
-        # Robust ranking: handle NaN/inf
-        if feature_weights is not None:
-            feature_weights = np.nan_to_num(
-                feature_weights,
-                nan=0.0,
-                posinf=np.finfo(float).max,
-                neginf=-np.finfo(float).max,
+        if feature_weights is None:
+            primary = np.asarray(width, dtype=float)
+            ties = None
+        else:
+            primary = np.abs(np.asarray(feature_weights, dtype=float))
+            ties = None if width is None else np.asarray(width, dtype=float)
+        n = len(primary)
+        if num_to_show is not None and (
+            isinstance(num_to_show, bool)
+            or not isinstance(num_to_show, (int, np.integer))
+        ):
+            raise ValidationError(
+                "num_to_show must be an integer or None",
+                details={"param": "num_to_show", "value": repr(num_to_show)},
             )
-        if width is not None:
-            width = np.nan_to_num(
-                width,
-                nan=0.0,
-                posinf=np.finfo(float).max,
-                neginf=-np.finfo(float).max,
+        if num_to_show is not None and num_to_show <= 0:
+            warnings.warn(
+                "rank_features(num_to_show <= 0) uses deprecated v1.0.x "
+                "selection semantics; migrate to canonical top_k.",
+                DeprecationWarning,
+                stacklevel=2,
             )
-
-        # handle case where there are same weight but different uncertainty
-        if feature_weights is not None and width is not None:
-            # get the indices by first sorting on the absolute value of the
-            # feature_weight and then on the width
-            sorted_indices = [
-                i
-                for i, x in sorted(
-                    enumerate(list(zip(np.abs(feature_weights), width, strict=False))),
-                    key=lambda x: (x[1][0], x[1][1]),
-                )
-            ]
-            return sorted_indices[-num_to_show:]  # pylint: disable=invalid-unary-operand-type
-        if width is not None:
-            sorted_indices = np.argsort(width)
-            return sorted_indices[-num_to_show:]  # pylint: disable=invalid-unary-operand-type
-        sorted_indices = np.argsort(np.abs(feature_weights))
-        return sorted_indices[-num_to_show:]  # pylint: disable=invalid-unary-operand-type
+            # Keep the legacy effective selection count for v1.1.0.
+            if num_to_show == 0:
+                return list(reversed(canonical_rank_indices(primary, ties)))
+            return list(reversed(canonical_rank_indices(primary, ties)))[-num_to_show:]
+        return list(
+            reversed(canonical_rank_indices(primary, ties, top_k=num_to_show))
+        )
 
     def is_one_sided(self) -> bool:
         """Test if a regression explanation is one-sided.
