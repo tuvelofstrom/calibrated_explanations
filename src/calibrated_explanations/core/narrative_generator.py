@@ -250,6 +250,9 @@ class NarrativeGenerator:
         feature_names: Optional[List[str]] = None,
         conjunction_separator: str = " AND ",
         align_weights: bool = True,
+        rnk_metric: str | None = None,
+        rnk_weight: float = 0.5,
+        filter_top: int | None = None,
     ) -> str:
         """Generate narrative for a single explanation."""
         from ..utils.exceptions import ValidationError
@@ -433,62 +436,61 @@ class NarrativeGenerator:
         if reject_insert:
             template = reject_insert + template
 
-        # Phase 2: Use canonical rules for consistency if available
-        if hasattr(explanation, "_rules_with_impact"):
-            canonical_rules = explanation._rules_with_impact()
-            pos_features = []
-            neg_features = []
-            for cr in canonical_rules:
-                flat = {
-                    "rule": cr.text,
-                    "value": cr.value,
-                    "weight": cr.impact,
-                    "weight_low": cr.weight_envelope_low,
-                    "weight_high": cr.weight_envelope_high,
-                    "feature_name": cr.feature,
-                    "feature_index": cr.rule_id,
-                    "predict": cr.predict,
-                    "predict_low": cr.predict_low,
-                    "predict_high": cr.predict_high,
-                    "is_conjunctive": " & " in (cr.text or ""),
-                }
-                if cr.direction == "positive":
-                    pos_features.append(flat)
-                elif cr.direction == "negative":
-                    neg_features.append(flat)
-            # Canonical rules are implicitly sorted by impact
+        # ADR-042: rank the native rule table once. Filter before top-k, then
+        # partition by sign without re-sorting within any presentation group.
+        from ..utils.ranking import rank_rule_indices
+
+        active_rules = (
+            explanation.conjunctive_rules
+            if getattr(explanation, "has_conjunctive_rules", False)
+            and getattr(explanation, "conjunctive_rules", None)
+            else rules_dict
+        )
+        flat_rules = self.serialize_rules(active_rules, feature_names)
+        if hasattr(explanation, "_canonical_rule_indices"):
+            ordered_indices = explanation._canonical_rule_indices(
+                active_rules, rnk_metric=rnk_metric, rnk_weight=rnk_weight
+            )
         else:
-            # Get feature rules with proper feature names
-            rules = self.serialize_rules(rules_dict, feature_names)
+            ordered_indices = rank_rule_indices(
+                active_rules,
+                explanation_type="alternative" if explanation_type == "alternative" else "factual",
+                base_predict=bp,
+                probability=problem_type != "regression",
+                rnk_metric=rnk_metric,
+                rnk_weight=rnk_weight,
+            )
+        if explanation_type == "alternative":
+            instance_predict = getattr(explanation, "prediction", None)
+            if isinstance(instance_predict, dict):
+                baseline = instance_predict
+            else:
+                baseline = {}
+            ordered_indices = [
+                i for i in ordered_indices
+                if not (
+                    all(
+                        name in baseline and flat_rules[i].get(field) is not None
+                        for name, field in (
+                            ("predict", "predict"),
+                            ("low", "predict_low"),
+                            ("high", "predict_high"),
+                        )
+                    )
+                    and np.isclose(flat_rules[i]["predict"], baseline["predict"])
+                    and np.isclose(flat_rules[i]["predict_low"], baseline["low"])
+                    and np.isclose(flat_rules[i]["predict_high"], baseline["high"])
+                )
+            ]
+        if filter_top is not None:
+            from ..utils.ranking import canonical_rank_indices
 
-            # Split features by weight sign
-            pos_features = [r for r in rules if r.get("weight", 0) > 0]
-            neg_features = [r for r in rules if r.get("weight", 0) < 0]
-
-            # Sort using same logic as rank_features in __repr__:
-            # Primary: absolute weight (descending)
-            # Secondary: width = weight_high - weight_low (descending, larger uncertainty last)
-            def rank_key(r):
-                w = r.get("weight", 0)
-                wl = r.get("weight_low")
-                wh = r.get("weight_high")
-                width = 0.0
-                if wl is not None and wh is not None:
-                    try:
-                        width = float(wh) - float(wl)
-                    except (ValueError, TypeError):
-                        width = 0.0
-                return (abs(w), width)
-
-            pos_features.sort(key=rank_key, reverse=True)
-            neg_features.sort(key=rank_key, reverse=True)
-
-        # Take top features (min 3)
-        min_features = 3
-        max_features = max(min_features, len(pos_features))
-        pos_features = pos_features[:max_features]
-        max_features = max(min_features, len(neg_features))
-        neg_features = neg_features[:max_features]
+            # Validate even when fewer eligible rules exist.
+            canonical_rank_indices([0.0] * len(ordered_indices), top_k=filter_top)
+            ordered_indices = ordered_indices[:filter_top]
+        selected = [flat_rules[i] for i in ordered_indices]
+        pos_features = [r for r in selected if r.get("weight", 0) > 0]
+        neg_features = [r for r in selected if r.get("weight", 0) < 0]
 
         # For advanced level: split by prediction interval width
         # (Exclude standard regression because absolute width threshold 0.20 is not applicable)
