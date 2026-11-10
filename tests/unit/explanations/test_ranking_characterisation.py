@@ -1,13 +1,7 @@
-"""Characterisation tests for the pre-ADR-042 rule and feature ranking behaviour.
+"""Characterisation tests updated for ADR-042 canonical ranking in v1.1.0.
 
-These tests pin the ranking behaviour that ships in v1.0.x so the canonical
-ranking contract in ``development/adrs/ADR-042-canonical-rule-and-feature-ranking.md``
-has executable evidence of the current state. They intentionally assert the
-*current* behaviour, including the divergences and defects ADR-042 resolves.
-
-When #204 implements ADR-042 (v1.1.0), each test whose behaviour the ADR
-changes is expected to be rewritten against the canonical contract; the
-ADR-042 "Current behaviour" appendix maps every test below to its decision.
+These tests retain the former v1.0.x scenarios but assert the accepted
+canonical semantics, documenting deliberate output changes.
 """
 
 from __future__ import annotations
@@ -181,34 +175,34 @@ def test_rank_features_ranks_by_magnitude_ignoring_sign(ranker):
     assert list(ranked)[-1] == 0
 
 
-def test_rank_features_breaks_magnitude_ties_in_favour_of_wider_interval(ranker):
+def test_rank_features_breaks_magnitude_ties_in_favour_of_narrower_interval(ranker):
     ranked = ranker(np.array([0.2, -0.2]), width=np.array([0.3, 0.1]))
 
-    assert list(ranked)[-1] == 0  # wider (less certain) rule ranks strongest
+    assert list(ranked)[-1] == 1  # narrower (more certain) rule ranks strongest
 
 
-def test_rank_features_full_tie_ranks_highest_index_strongest(ranker):
+def test_rank_features_full_tie_ranks_lowest_native_index_strongest(ranker):
     ranked = ranker(np.array([0.2, 0.2, 0.2]), width=np.array([0.1, 0.1, 0.1]))
 
-    assert list(ranked) == [0, 1, 2]
+    assert list(ranked) == [2, 1, 0]
 
 
-def test_rank_features_maps_nan_weight_to_zero(ranker):
+def test_rank_features_places_nan_weight_last(ranker):
     ranked = ranker(np.array([np.nan, 0.1, -0.05]), width=np.array([0.1, 0.1, 0.1]))
 
     assert list(ranked) == [0, 2, 1]
 
 
-def test_rank_features_collapses_positive_and_negative_infinity(ranker):
+def test_rank_features_ranks_infinite_weights_by_narrower_width(ranker):
     ranked = ranker(np.array([0.1, -np.inf, np.inf]), width=np.array([0.1, 0.1, 0.2]))
 
-    assert list(ranked) == [0, 1, 2]  # +/-inf tie on magnitude; width decides
+    assert list(ranked) == [0, 2, 1]  # +/-inf tie on magnitude; narrower wins
 
 
-def test_rank_features_maps_nan_width_to_most_certain(ranker):
+def test_rank_features_treats_nan_width_as_maximally_uncertain(ranker):
     ranked = ranker(np.array([0.2, 0.2]), width=np.array([np.nan, 0.1]))
 
-    assert list(ranked)[-1] == 1  # NaN width -> 0.0, loses the wider-wins tie-break
+    assert list(ranked)[-1] == 1  # NaN width -> infinity, loses the narrower-wins tie-break
 
 
 def test_rank_features_width_only_ranks_by_width(ranker):
@@ -223,14 +217,16 @@ def test_rank_features_clamps_num_to_show_above_available(ranker):
     assert list(ranked) == [1, 0]
 
 
-def test_rank_features_num_to_show_zero_returns_all(ranker):
-    ranked = ranker(np.array([0.3, 0.1, 0.2]), num_to_show=0)
+def test_rank_features_warns_but_keeps_legacy_zero_count_in_v110(ranker):
+    with pytest.warns(DeprecationWarning):
+        ranked = ranker(np.array([0.3, 0.1, 0.2]), num_to_show=0)
 
     assert list(ranked) == [1, 2, 0]
 
 
-def test_rank_features_negative_num_to_show_drops_weakest(ranker):
-    ranked = ranker(np.array([0.3, 0.1, 0.2]), num_to_show=-1)
+def test_rank_features_warns_but_keeps_legacy_negative_count_in_v110(ranker):
+    with pytest.warns(DeprecationWarning):
+        ranked = ranker(np.array([0.3, 0.1, 0.2]), num_to_show=-1)
 
     assert list(ranked) == [2, 0]
 
@@ -246,7 +242,7 @@ def test_factual_repr_orders_strongest_first_and_keeps_zero_impact():
     assert _repr_rule_order(explanation) == ["r1", "r0", "r2"]
 
 
-def test_factual_repr_breaks_ties_by_rule_text_and_disagrees_with_rank_features():
+def test_factual_repr_uses_same_narrower_width_tie_break_as_rank_features():
     texts = ["a rule", "z rule"]
     explanation = _make_factual([0.2, -0.2], [0.1, -0.5], [0.3, 0.1], texts)
     widths = np.array([0.2, 0.6])
@@ -257,25 +253,20 @@ def test_factual_repr_breaks_ties_by_rule_text_and_disagrees_with_rank_features(
     )
 
     assert repr_order[0] == "a rule"
-    assert texts[strongest_by_rank] == "z rule"
+    assert texts[strongest_by_rank] == "a rule"
 
 
 @pytest.mark.parametrize(
     ("weights", "nan_rule", "expected_finite_order"),
     [
         ([np.nan, 0.1, 0.3], "r0", ["r2", "r1"]),
-        ([0.1, np.nan, 0.3], "r1", ["r0", "r2"]),
+        ([0.1, np.nan, 0.3], "r1", ["r2", "r0"]),
     ],
 )
-def test_factual_repr_nan_impact_order_depends_on_input_position(
+def test_factual_repr_nan_impact_never_disturbs_finite_order(
     weights, nan_rule, expected_finite_order
 ):
-    """A NaN impact makes the sort key incomparable (ADR-042 D6).
-
-    Where the NaN rule itself lands depends on the interpreter's sort algorithm
-    (CPython 3.13 changed ``list.sort``), so only the interpreter-independent
-    symptom is pinned: the NaN's input position flips the order of the finite rules.
-    """
+    """ADR-042 puts NaN after finite impacts independently of input position."""
     explanation = _make_factual(weights, [0.0] * 3, [0.0] * 3, ["r0", "r1", "r2"])
 
     order = _repr_rule_order(explanation)
@@ -286,10 +277,10 @@ def test_factual_repr_nan_impact_order_depends_on_input_position(
 # --- AlternativeExplanation ordering ------------------------------------------------
 
 
-def test_alternative_repr_ranks_by_absolute_prediction_delta():
+def test_alternative_repr_uses_default_ensured_rank():
     explanation = _make_alternative()
 
-    assert _repr_rule_order(explanation) == ["r0", "r2", "r1"]
+    assert _repr_rule_order(explanation) == ["r1", "r2", "r0"]
 
 
 def test_alternative_plot_default_ranks_by_ensured_score(recorded_alternative_plot):
@@ -319,16 +310,15 @@ def test_alternative_plot_negative_weight_puts_counter_alternatives_first(
     assert recorded_alternative_plot == [["r0", "r1", "r2"]]
 
 
-def test_alternative_plot_uncertainty_alias_ranks_by_probability_only(
+def test_alternative_plot_uncertainty_alias_ranks_by_narrower_intervals(
     recorded_alternative_plot,
 ):
     explanation = _make_alternative()
 
     explanation.plot(show=False, rnk_metric="uncertainty")
 
-    # The alias sets w=1.0, which removes the uncertainty term entirely; it does
-    # not put the most uncertain rule (r0) first as its source comment claims.
-    assert recorded_alternative_plot == [["r2", "r1", "r0"]]
+    # The alias sets w=0.0: the narrowest alternative ranks first.
+    assert recorded_alternative_plot == [["r1", "r2", "r0"]]
 
 
 # --- PlotSpec presentation sort (viz/builders.py) -----------------------------------
