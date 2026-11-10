@@ -2502,10 +2502,18 @@ class FactualExplanation(CalibratedExplanation):
         )
 
         if rnk_metric == "feature_weight":
-            features_to_plot = self.rank_features(
-                factual["weight"], width=width, num_to_show=filter_top
+            features_to_plot = self._canonical_rule_indices(
+                factual, top_k=filter_top
             )
         else:
+            # Legacy factual plot metrics stay available with a deprecation
+            # warning until ADR-020 permits removal in v2.0.0.
+            warnings.warn(
+                "Non-feature_weight factual plot ranking is deprecated; "
+                "use rnk_metric='feature_weight'.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
             ranking = calculate_metrics(
                 uncertainty=[
                     factual["predict_high"][i] - factual["predict_low"][i]
@@ -2515,7 +2523,9 @@ class FactualExplanation(CalibratedExplanation):
                 w=rnk_weight,
                 metric=rnk_metric,
             )
-            features_to_plot = self.rank_features(width=ranking, num_to_show=filter_top)
+            from ..utils.ranking import canonical_rank_indices
+
+            features_to_plot = canonical_rank_indices(ranking, top_k=filter_top)
 
         # Prefer explicit feature/column names when available; fall back to rule strings
         column_names = (
@@ -4009,10 +4019,7 @@ class AlternativeExplanation(CalibratedExplanation):
         if rnk_metric is None:
             rnk_metric = "ensured"
         rnk_weight = kwargs.pop("rnk_weight", 0.5)
-        # Put the most uncertain rules at the top
-        if rnk_metric == "uncertainty":
-            rnk_weight = 1.0
-            rnk_metric = "ensured"
+        # Uncertainty alias is resolved by the rank authority as ensured w=0.
         _log_forwarded_plot_kwargs(
             f"{type(self).__name__}.plot",
             kwargs,
@@ -4057,41 +4064,20 @@ class AlternativeExplanation(CalibratedExplanation):
             )
             return
 
-        if rnk_metric == "feature_weight":
-            features_to_plot = self.rank_features(
-                feature_weights, width=width, num_to_show=num_to_show_
-            )
-        else:
-            # Always rank base on predicted class
-            prediction = alternative["predict"]
-            if self.get_mode() == "classification" or self.is_thresholded():
-                prediction = prediction if predict["predict"] > 0.5 else [1 - p for p in prediction]
-            ranking = calculate_metrics(
-                uncertainty=[
-                    alternative["predict_high"][i] - alternative["predict_low"][i]
-                    for i in range(num_rules)
-                ],
-                prediction=prediction,
-                w=rnk_weight,
-                metric=rnk_metric,
-            )
-            features_to_plot = self.rank_features(width=ranking, num_to_show=num_to_show_)
-
-        # Display highest-impact rules at the top: reverse the index order returned by
-        # rank_features (which yields ascending by design).
-        features_to_plot = list(reversed(features_to_plot))
-
-        # Filter out rules that don't change the prediction or uncertainty (exactly identical to base).
-        # Keep ordering from the ranking.
+        # Filter after ranking but before top-k; filtering cannot displace
+        # stronger eligible rules from the selected prefix (ADR-042 D7-D8).
+        all_ranked = self._canonical_rule_indices(
+            alternative, rnk_metric=rnk_metric, rnk_weight=rnk_weight
+        )
         features_to_plot = [
             i
-            for i in features_to_plot
+            for i in all_ranked
             if not (
                 np.isclose(feature_predict["predict"][i], predict["predict"])
                 and np.isclose(feature_predict["low"][i], predict["low"])
                 and np.isclose(feature_predict["high"][i], predict["high"])
             )
-        ]
+        ][:num_to_show_]
         # Adjust the number to show after filtering
         num_to_show_filtered = min(num_to_show_, len(features_to_plot))
 
@@ -4470,10 +4456,18 @@ class FastExplanation(CalibratedExplanation):
         )
 
         if rnk_metric == "feature_weight":
-            features_to_plot = self.rank_features(
-                factual["weight"], width=width, num_to_show=filter_top
+            features_to_plot = self._canonical_rule_indices(
+                factual, top_k=filter_top
             )
         else:
+            # Legacy factual plot metrics stay available with a deprecation
+            # warning until ADR-020 permits removal in v2.0.0.
+            warnings.warn(
+                "Non-feature_weight factual plot ranking is deprecated; "
+                "use rnk_metric='feature_weight'.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
             ranking = calculate_metrics(
                 uncertainty=[
                     factual["predict_high"][i] - factual["predict_low"][i]
@@ -4483,7 +4477,9 @@ class FastExplanation(CalibratedExplanation):
                 w=rnk_weight,
                 metric=rnk_metric,
             )
-            features_to_plot = self.rank_features(width=ranking, num_to_show=filter_top)
+            from ..utils.ranking import canonical_rank_indices
+
+            features_to_plot = canonical_rank_indices(ranking, top_k=filter_top)
 
         # Prefer explicit feature/column names when available; fall back to rule strings
         column_names = (
