@@ -523,10 +523,35 @@ class CalibratedExplanation(ABC):
                 DeprecationWarning,
                 stacklevel=2,
             )
-            # Keep the legacy effective selection count for v1.1.0.
-            if num_to_show == 0:
-                return list(reversed(canonical_rank_indices(primary, ties)))
-            return list(reversed(canonical_rank_indices(primary, ties)))[-num_to_show:]
+            # Preserve the exact v1.0.x selection algorithm through the
+            # ADR-011 deprecation window, including its historical tie order.
+            old_primary = np.nan_to_num(
+                np.asarray(feature_weights if feature_weights is not None else width, dtype=float),
+                nan=0.0,
+                posinf=np.finfo(float).max,
+                neginf=-np.finfo(float).max,
+            )
+            if feature_weights is not None:
+                old_primary = np.abs(old_primary)
+            old_width = (
+                None if feature_weights is None or width is None
+                else np.nan_to_num(
+                    np.asarray(width, dtype=float),
+                    nan=0.0,
+                    posinf=np.finfo(float).max,
+                    neginf=-np.finfo(float).max,
+                )
+            )
+            if old_width is not None:
+                indices = [
+                    i for i, _ in sorted(
+                        enumerate(zip(old_primary, old_width, strict=False)),
+                        key=lambda item: (item[1][0], item[1][1]),
+                    )
+                ]
+            else:
+                indices = list(np.argsort(old_primary))
+            return indices[-num_to_show:]
         return list(
             reversed(canonical_rank_indices(primary, ties, top_k=num_to_show))
         )
