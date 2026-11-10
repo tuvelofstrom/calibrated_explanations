@@ -622,6 +622,10 @@ class CalibratedExplanation(ABC):
         output_format="dataframe",
         conjunction_separator=" AND ",
         align_weights=True,
+        *,
+        rnk_metric=None,
+        rnk_weight=0.5,
+        filter_top=None,
         **kwargs,
     ):
         """
@@ -691,6 +695,13 @@ class CalibratedExplanation(ABC):
         from ..viz.narrative_plugin import NarrativePlotPlugin
 
         reject_unsupported_narrative_kwargs(kwargs, surface=f"{type(self).__name__}.to_narrative")
+        if not isinstance(self, AlternativeExplanation) and rnk_metric not in (
+            None, "feature_weight"
+        ):
+            raise ValidationError(
+                "Factual and FAST narratives only support feature_weight ranking",
+                details={"param": "rnk_metric", "value": rnk_metric},
+            )
 
         # Create a temporary collection with just this explanation
         # We need to wrap this single explanation in a collection-like object
@@ -723,6 +734,9 @@ class CalibratedExplanation(ABC):
             output=output_format,
             conjunction_separator=conjunction_separator,
             align_weights=align_weights,
+            rnk_metric=rnk_metric,
+            rnk_weight=rnk_weight,
+            filter_top=filter_top,
             **kwargs,
         )
 
