@@ -3081,9 +3081,7 @@ class MultiClassCalibratedExplanations(CalibratedExplanations):
                 if rnk_metric is None:
                     rnk_metric = "ensured"
                 rnk_weight = kwargs.get("rnk_weight", 0.5)
-                if rnk_metric == "uncertainty":
-                    rnk_weight = 1.0
-                    rnk_metric = "ensured"
+                # 'uncertainty' is ensured with zero weight (rank authority).
 
                 alternatives = []
                 for ex in list(class_explanations.values()):
@@ -3103,7 +3101,12 @@ class MultiClassCalibratedExplanations(CalibratedExplanations):
                             ex._check_preconditions()
                     predicts = [getattr(ex, "prediction", None) for ex in class_explanations_list]
 
-                filter_top = [len(alternative["rule"]) for alternative in alternatives]
+                requested_top = filter_top
+                filter_top = [
+                    len(alt["rule"]) if requested_top is None
+                    else min(len(alt["rule"]), requested_top)
+                    for alt in alternatives
+                ]
                 """if filter_top is None:
                     filter_top = num_features_to_show_list
                 else:
@@ -3135,63 +3138,30 @@ class MultiClassCalibratedExplanations(CalibratedExplanations):
                     for alternative in alternatives
                 ]
 
-                widths = [
-                    np.reshape(
-                        np.array(alternative["weight_high"]) - np.array(alternative["weight_low"]),
-                        (len(alternative["weight"])),
+                from ..utils.ranking import rank_rule_indices
+
+                features_list_to_plot = []
+                for alternative, pred, limit in zip(
+                    alternatives, predicts, filter_top, strict=False
+                ):
+                    base = pred["predict"] if isinstance(pred, dict) else alternative["base_predict"][0]
+                    ordered = rank_rule_indices(
+                        alternative,
+                        explanation_type="alternative",
+                        base_predict=base,
+                        probability=True,
+                        rnk_metric=rnk_metric,
+                        rnk_weight=rnk_weight,
                     )
-                    for alternative in alternatives
-                ]
-
-                features_weights = [
-                    np.reshape(alternative["weight"], (len(alternative["weight"])))
-                    for alternative in alternatives
-                ]
-
-                def _rank_features_for_multiclass(explanation, *args, **rank_kwargs):
-                    rank_fn = getattr(explanation, "rank_features", None)
-                    if callable(rank_fn):
-                        return rank_fn(*args, **rank_kwargs)
-                    return explanation._rank_features(*args, **rank_kwargs)
-
-                if rnk_metric == "feature_weight":
-                    features_list_to_plot = [
-                        _rank_features_for_multiclass(
-                            ex, feature_weights, width=width, num_to_show=num_to_show
+                    eligible = [
+                        j for j in ordered
+                        if not (
+                            np.isclose(alternative["predict"][j], pred["predict"])
+                            and np.isclose(alternative["predict_low"][j], pred["low"])
+                            and np.isclose(alternative["predict_high"][j], pred["high"])
                         )
-                        for ex, feature_weights, width, num_to_show in zip(
-                            list(class_explanations.values()),
-                            features_weights,
-                            widths,
-                            filter_top,
-                            strict=False,
-                        )
-                    ]
-                else:
-                    predictions = [
-                        alternative["predict"]
-                        if predict["predict"] > 0.5
-                        else [1 - p for p in alternative["predict"]]
-                        for alternative, predict in zip(alternatives, predicts, strict=False)
-                    ]
-                    rankings = [
-                        calculate_metrics(
-                            uncertainty=[
-                                alternative["predict_high"][i] - alternative["predict_low"][i]
-                                for i in range(len(alternative["rule"]))
-                            ],
-                            prediction=prediction,
-                            w=rnk_weight,
-                            metric=rnk_metric,
-                        )
-                        for alternative, prediction in zip(alternatives, predictions, strict=False)
-                    ]
-                    features_list_to_plot = [
-                        _rank_features_for_multiclass(ex, width=ranking, num_to_show=num_to_show)
-                        for ex, ranking, num_to_show in zip(
-                            list(class_explanations.values()), rankings, filter_top, strict=False
-                        )
-                    ]  ####################
+                    ] if isinstance(pred, dict) else ordered
+                    features_list_to_plot.append(eligible[:limit])
 
                 if "style" in kwargs and kwargs["style"] == "triangular":
                     raise ValidationError(
