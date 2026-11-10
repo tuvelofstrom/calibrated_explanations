@@ -185,16 +185,8 @@ def add_conjunctions_factual_legacy(self, n_top_features=5, max_rule_size=2):
         if num_rules == 0:
             break
 
-        weights_array = np.asarray(conjunctive_state["weight"], dtype=float)
-        width_array = np.asarray(conjunctive_state["weight_high"], dtype=float) - np.asarray(
-            conjunctive_state["weight_low"], dtype=float
-        )
-        top_conjunctives = list(
-            self.rank_features(
-                weights_array,
-                width=width_array,
-                num_to_show=min(num_rules, n_top_features),
-            )
+        top_conjunctives = self._canonical_rule_indices(
+            conjunctive_state, top_k=n_top_features
         )
 
         covered_combinations = {
@@ -273,7 +265,9 @@ def add_conjunctions_factual_legacy(self, n_top_features=5, max_rule_size=2):
     return self
 
 
-def add_conjunctions_alternative_legacy(self, n_top_features=5, max_rule_size=2):
+def add_conjunctions_alternative_legacy(
+    self, n_top_features=5, max_rule_size=2, *, rnk_metric=None, rnk_weight=0.5
+):
     """
     Add conjunctive alternative rules (Legacy).
 
@@ -346,16 +340,11 @@ def add_conjunctions_alternative_legacy(self, n_top_features=5, max_rule_size=2)
         if num_rules == 0:
             break
 
-        weights_array = np.asarray(conjunctive_state["weight"], dtype=float)
-        width_array = np.asarray(conjunctive_state["weight_high"], dtype=float) - np.asarray(
-            conjunctive_state["weight_low"], dtype=float
-        )
-        top_conjunctives = list(
-            self.rank_features(
-                weights_array,
-                width=width_array,
-                num_to_show=min(num_rules, n_top_features),
-            )
+        top_conjunctives = self._canonical_rule_indices(
+            conjunctive_state,
+            rnk_metric=rnk_metric,
+            rnk_weight=rnk_weight,
+            top_k=n_top_features,
         )
 
         covered_combinations = {
