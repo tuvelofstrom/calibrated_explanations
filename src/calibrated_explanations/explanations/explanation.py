@@ -57,8 +57,8 @@ from ..utils.exceptions import CalibratedError, ValidationError
 from ..utils.deprecations import deprecate
 from ..utils.helper import assign_threshold as normalize_threshold
 from ..utils.int_utils import collect_ints
-from ._conjunctions import ConjunctionState
 from ..utils.ranking import rank_rule_indices
+from ._conjunctions import ConjunctionState
 
 _LOGGER = logging.getLogger(__name__)
 
