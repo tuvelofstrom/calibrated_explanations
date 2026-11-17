@@ -447,19 +447,39 @@ class NarrativeGenerator:
             else rules_dict
         )
         flat_rules = self.serialize_rules(active_rules, feature_names)
-        if hasattr(explanation, "_canonical_rule_indices"):
-            ordered_indices = explanation._canonical_rule_indices(
-                active_rules, rnk_metric=rnk_metric, rnk_weight=rnk_weight
+        # Rank using the stable rule-table contract, not private methods on
+        # explanation instances. External/subclass renderers may only supply
+        # get_rules(), without an initialized CalibratedExplanation base.
+        n_rules = len(flat_rules)
+        def ranking_column(name, *, default):
+            values = active_rules.get(name, ())
+            if len(values) == n_rules:
+                return values
+            if len(values) == 0:
+                return [default] * n_rules
+            raise ValidationError(
+                "Narrative rule columns must be aligned",
+                details={"field": name, "expected": n_rules, "received": len(values)},
             )
-        else:
-            ordered_indices = rank_rule_indices(
-                active_rules,
-                explanation_type="alternative" if explanation_type == "alternative" else "factual",
-                base_predict=bp,
-                probability=problem_type != "regression",
-                rnk_metric=rnk_metric,
-                rnk_weight=rnk_weight,
-            )
+
+        # Older template-compatible rule providers may omit interval bounds.
+        # Unknown widths lose uncertainty ties; output facts are never altered.
+        rank_values = {
+            "weight": ranking_column("weight", default=0.0),
+            "weight_low": ranking_column("weight_low", default=-np.inf),
+            "weight_high": ranking_column("weight_high", default=np.inf),
+            "predict": ranking_column("predict", default=0.0),
+            "predict_low": ranking_column("predict_low", default=-np.inf),
+            "predict_high": ranking_column("predict_high", default=np.inf),
+        }
+        ordered_indices = rank_rule_indices(
+            rank_values,
+            explanation_type="alternative" if explanation_type == "alternative" else "factual",
+            base_predict=bp,
+            probability=problem_type != "regression",
+            rnk_metric=rnk_metric,
+            rnk_weight=rnk_weight,
+        )
         if explanation_type == "alternative":
             instance_predict = getattr(explanation, "prediction", None)
             if isinstance(instance_predict, dict):
