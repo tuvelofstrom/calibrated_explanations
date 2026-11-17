@@ -494,6 +494,26 @@ class CalibratedExplanation(ABC):
 
         In v1.1.0, non-positive counts retain their v1.0.x result with a
         DeprecationWarning; D8 semantics start in the second minor release.
+
+        Parameters
+        ----------
+        feature_weights : array-like of float, optional
+            Calibrated feature weights. Ranked by absolute magnitude.
+        width : array-like of float, optional
+            Weight interval widths for tie-breaking, or precomputed ranking
+            scores when feature_weights is None.
+        num_to_show : int or None, optional
+            Number of strongest indices, returned strongest-last.
+
+        Returns
+        -------
+        list of int
+            Strongest-last indices into the original rule table.
+
+        Raises
+        ------
+        ValidationError
+            If the input arrays or count are invalid.
         """
         from ..utils.ranking import canonical_rank_indices
 
@@ -679,6 +699,14 @@ class CalibratedExplanation(ABC):
             For factual explanations this aligns the weight marker ("— weight …").
             For alternative explanations this aligns the "then" keyword in rule lines.
             If False, no alignment is applied.
+        rnk_metric : str or None, optional
+            Alternative ranking metric (ensured by default); factual/FAST
+            supports only feature_weight.
+        rnk_weight : float, default=0.5
+            Alternative ensured score trade-off; ignored for factual ranking.
+        filter_top : int or None, default=None
+            Include at most the strongest k eligible rules. None includes all.
+            Rule ranking has no statistical stability guarantee (ADR-042 D14).
         **kwargs : dict
             Additional keyword arguments passed to the narrative plugin.
 
@@ -2142,6 +2170,13 @@ class FactualExplanation(CalibratedExplanation):
             Number of top features to consider when ranking candidates.
         max_rule_size : int, optional
             Maximum number of features in a single conjunctive rule.
+        rnk_metric : str or None, optional (keyword via **kwargs)
+            Alternative-only ranking metric. Factual accepts feature_weight
+            only; other metrics raise ValidationError (ADR-042 D11).
+        rnk_weight : float, default=0.5 (keyword via **kwargs)
+            Alternative ensured trade-off in [-1, 1]. Pass the same settings
+            when generating conjunctions and subsequently plotting or narrating.
+            Rule rankings are deterministic but have no statistical guarantee.
 
         Other Parameters
         ----------------
