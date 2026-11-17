@@ -1637,6 +1637,14 @@ class CalibratedExplanations:  # pylint: disable=too-many-instance-attributes
         align_weights : bool, default=True
             If True, vertically align weight columns in the narrative output.
             If False, no alignment is applied.
+        rnk_metric : str or None, optional
+            Alternative ensured ranking (default), feature_weight or uncertainty.
+            Factual and FAST accept feature_weight only.
+        rnk_weight : float, default=0.5
+            Alternative ensured score trade-off.
+        filter_top : int or None, default=10
+            Select the strongest ten eligible rules by default, matching
+            collection.plot(). The rank itself has no statistical guarantee.
         **kwargs : dict
             Additional keyword arguments passed to the narrative plugin.
 
