@@ -3049,6 +3049,7 @@ class MultiClassCalibratedExplanations(CalibratedExplanations):
                         filename=filename,
                         uncertainty=uncertainty,
                         style=style,
+                    **kwargs,
                     )
                 else:
                     warnings.warn(
@@ -3062,6 +3063,7 @@ class MultiClassCalibratedExplanations(CalibratedExplanations):
                     filename=filename,
                     uncertainty=uncertainty,
                     style=style,
+                **kwargs,
                 )
         else:
             import matplotlib.colors as mcolors
@@ -3069,6 +3071,10 @@ class MultiClassCalibratedExplanations(CalibratedExplanations):
             rgb = np.array(list(permutations(range(0, 256, 11), 3))) / 255.0
             colors = [rgb.tolist()[i * 23] for i in range(25)]
             colors = list(mcolors.BASE_COLORS.values())
+            from ..utils.ranking import canonical_rank_indices
+
+            requested_top = filter_top
+            canonical_rank_indices([], top_k=requested_top)
             for i, class_explanations in enumerate(self.explanations):
                 # Ensure style_override gets passed through
                 class_explanations_list = list(class_explanations.values())
@@ -3101,11 +3107,10 @@ class MultiClassCalibratedExplanations(CalibratedExplanations):
                             ex._check_preconditions()
                     predicts = [getattr(ex, "prediction", None) for ex in class_explanations_list]
 
-                requested_top = filter_top
-                filter_top = [
-                    len(alt["rule"]) if requested_top is None
-                    else min(len(alt["rule"]), requested_top)
-                    for alt in alternatives
+                limits = [
+                    len(candidate["rule"]) if requested_top is None
+                    else min(len(candidate["rule"]), requested_top)
+                    for candidate in alternatives
                 ]
                 """if filter_top is None:
                     filter_top = num_features_to_show_list
@@ -3113,7 +3118,7 @@ class MultiClassCalibratedExplanations(CalibratedExplanations):
                     filter_top = [filter_top for factual in factuals]
                 filter_top = [np.min([num_features_to_show, filter_]) for num_features_to_show, filter_ in zip(num_features_to_show_list,filter_top)]"""
 
-                if len(filter_top) <= 0:
+                if not limits:
                     warnings.warn(
                         f"The explanation has no rules to plot. The index of the instance is {i}",
                         stacklevel=2,
@@ -3142,7 +3147,7 @@ class MultiClassCalibratedExplanations(CalibratedExplanations):
 
                 features_list_to_plot = []
                 for alternative, pred, limit in zip(
-                    alternatives, predicts, filter_top, strict=False
+                    alternatives, predicts, limits, strict=False
                 ):
                     base = pred["predict"] if isinstance(pred, dict) else alternative["base_predict"][0]
                     ordered = rank_rule_indices(
@@ -3162,6 +3167,8 @@ class MultiClassCalibratedExplanations(CalibratedExplanations):
                         )
                     ] if isinstance(pred, dict) else ordered
                     features_list_to_plot.append(eligible[:limit])
+
+                selected_counts = [len(indices) for indices in features_list_to_plot]
 
                 if "style" in kwargs and kwargs["style"] == "triangular":
                     raise ValidationError(
@@ -3203,7 +3210,7 @@ class MultiClassCalibratedExplanations(CalibratedExplanations):
                     predicts,
                     feature_predicts,
                     features_list_to_plot,
-                    num_to_show_list=filter_top,
+                    num_to_show_list=selected_counts,
                     colors=colors,
                     column_names_list=column_names_list,
                     title=title,
@@ -3289,6 +3296,7 @@ class MultiClassCalibratedExplanations(CalibratedExplanations):
                         filename=filename,
                         uncertainty=uncertainty,
                         style=style,
+                    **kwargs,
                     )
                 else:
                     warnings.warn(
@@ -3302,6 +3310,7 @@ class MultiClassCalibratedExplanations(CalibratedExplanations):
                     filename=filename,
                     uncertainty=uncertainty,
                     style=style,
+                **kwargs,
                 )
         else:
             for i, class_explanations in enumerate(self.explanations):
