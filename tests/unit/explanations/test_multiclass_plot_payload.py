@@ -186,3 +186,51 @@ def test_should_forward_ranking_parameters_for_individual_multiclass_plots():
     assert record.seen["rnk_metric"] == "feature_weight"
     assert record.seen["rnk_weight"] == -0.25
     assert record.seen["filter_top"] == 1
+
+
+def test_should_preserve_ranking_and_report_multiclass_narrative_format_fallback(caplog):
+    """Fallback to text is visible and never changes the requested rank settings."""
+    class TextOnly:
+        def __init__(self):
+            self.calls = []
+
+        def to_narrative(self, **kwargs):
+            self.calls.append(kwargs)
+            if kwargs["output_format"] == "dict":
+                raise ValueError("dict unavailable")
+            return "rendered"
+
+    text_only = TextOnly()
+    coll = MultiClassCalibratedExplanations(
+        type("Explainer", (), {"num_features": 1})(),
+        np.array([[1.0]]), bins=None, num_classes=1,
+        explanations=[{0: text_only}],
+    )
+    with pytest.warns(UserWarning, match="identical ranking parameters"):
+        result = coll.to_narrative(
+            output_format="dict", rnk_metric="ensured",
+            rnk_weight=0.3, filter_top=2,
+        )
+    assert result == [{0: {"text": "rendered"}}]
+    assert len(text_only.calls) == 2
+    assert all(call["rnk_metric"] == "ensured" for call in text_only.calls)
+    assert all(call["rnk_weight"] == 0.3 for call in text_only.calls)
+    assert all(call["filter_top"] == 2 for call in text_only.calls)
+    assert "retrying as text" in caplog.text
+
+
+@pytest.mark.parametrize("invalid", [-1, 1.5, True, "3"])
+def test_should_reject_invalid_multiclass_factual_top_k(invalid):
+    coll = MultiClassCalibratedExplanations(
+        type("Explainer", (), {"num_features": 1})(),
+        np.array([[1.0]]), bins=None, num_classes=1,
+        explanations=[{0: SimpleExp(0, 0)}],
+    )
+    from calibrated_explanations.utils.exceptions import ValidationError
+
+    with pytest.raises(ValidationError):
+        coll._build_factual_plot_payload(
+            i=0, class_explanations=coll.explanations[0], filename="",
+            show=False, uncertainty=False, style_override=None,
+            kwargs={}, filter_top=invalid,
+        )
