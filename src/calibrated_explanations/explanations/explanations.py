@@ -3436,18 +3436,55 @@ class MultiClassCalibratedExplanations(CalibratedExplanations):
 
         class_explanations_list = list(class_explanations.values())
 
-        rnk_metric = kwargs.get("rnk_metric", "feature_weight")
-        if rnk_metric is None:
-            rnk_metric = "feature_weight"
+        from ..utils.deprecations import deprecate
+        from ..utils.ranking import canonical_rank_indices, rank_rule_indices
+
+        rnk_metric = kwargs.get("rnk_metric", "feature_weight") or "feature_weight"
         rnk_weight = kwargs.get("rnk_weight", 0.5)
-        if rnk_metric == "uncertainty":
-            rnk_weight = 1.0
-            rnk_metric = "ensured"
+        canonical_rank_indices([], top_k=filter_top)
 
-        factuals = [ex.get_rules() for ex in class_explanations_list]
-        factuals = self.sort_factuals_by_rule(factuals)
+        # This is a comparative visualization grouped by rule name across
+        # classes. Rank/select the native rules WITHIN each class first;
+        # grouping those selected rules afterwards is presentation only.
+        # Ranking the grouped columns would incorrectly rank classes, not rules.
+        native_factuals = [ex.get_rules() for ex in class_explanations_list]
+        selected_factuals = []
+        for factual in native_factuals:
+            if rnk_metric == "feature_weight":
+                indices = rank_rule_indices(
+                    factual, explanation_type="factual", top_k=filter_top
+                )
+            else:
+                deprecate(
+                    "Non-feature_weight factual plot ranking is deprecated; "
+                    "use rnk_metric='feature_weight'.",
+                    key="plot.factual.rnk_metric",
+                    stacklevel=2,
+                )
+                metric = "ensured" if rnk_metric == "uncertainty" else rnk_metric
+                weight = 1.0 if rnk_metric == "uncertainty" else rnk_weight
+                scores = calculate_metrics(
+                    uncertainty=[
+                        factual["predict_high"][j] - factual["predict_low"][j]
+                        for j in range(len(factual["weight"]))
+                    ],
+                    prediction=factual["predict"],
+                    w=weight,
+                    metric=metric,
+                )
+                indices = canonical_rank_indices(scores, top_k=filter_top)
 
-        # Ensure each explanation has a sensible `index` set before checks
+            selected_factuals.append({
+                key: [values[j] for j in indices]
+                if isinstance(values, list) and len(values) == len(factual["rule"])
+                else values
+                for key, values in factual.items()
+            })
+        factuals = self.sort_factuals_by_rule(selected_factuals)
+        if not factuals:
+            return None
+
+        # Ensure each explanation has a sensible index before visualization.
         for ex in class_explanations_list:
             with contextlib.suppress(Exception):
                 ex.index = i
@@ -3455,73 +3492,27 @@ class MultiClassCalibratedExplanations(CalibratedExplanations):
                 ex._check_preconditions()
 
         predicts = [getattr(ex, "prediction", None) for ex in class_explanations_list]
-
-        filter_top = [
-            len(factual["weight"]) if filter_top is None
-            else min(len(factual["weight"]), filter_top)
-            for factual in list(factuals.values())
+        # Group row indices describe distinct classes for each selected rule.
+        # Their order is presentation and must not rerank the native rules.
+        features_list_to_plot = [
+            list(range(len(group["weight"]))) for group in factuals.values()
         ]
-        if len(filter_top) <= 0:
-            return None
+        selected_counts = [len(indices) for indices in features_list_to_plot]
 
         if uncertainty:
             feature_weights_list = [
                 {
-                    "predict": factual["weight"],
-                    "low": factual["weight_low"],
-                    "high": factual["weight_high"],
-                    "classes": factual["classes"],
+                    "predict": group["weight"],
+                    "low": group["weight_low"],
+                    "high": group["weight_high"],
+                    "classes": group["classes"],
                 }
-                for factual in list(factuals.values())
+                for group in factuals.values()
             ]
         else:
             feature_weights_list = [
-                {"predict": factual["weight"], "classes": factual["classes"]}
-                for factual in list(factuals.values())
-            ]
-
-        widths = [
-            np.reshape(
-                np.array(factual["weight_high"]) - np.array(factual["weight_low"]),
-                (len(factual["weight"])),
-            )
-            for factual in list(factuals.values())
-        ]
-
-        from ..utils.ranking import canonical_rank_indices, rank_rule_indices
-
-        if rnk_metric == "feature_weight":
-            features_list_to_plot = [
-                rank_rule_indices(factual, explanation_type="factual", top_k=num_to_show)
-                for factual, num_to_show in zip(
-                    list(factuals.values()), filter_top, strict=False
-                )
-            ]
-        else:
-            warnings.warn(
-                "Non-feature_weight factual plot ranking is deprecated; "
-                "use rnk_metric='feature_weight'.",
-                DeprecationWarning,
-                stacklevel=2,
-            )
-            if rnk_metric == "uncertainty":
-                rnk_metric = "ensured"
-                rnk_weight = 1.0  # preserve legacy factual plot behavior until v2
-            rankings = [
-                calculate_metrics(
-                    uncertainty=[
-                        factual["predict_high"][j] - factual["predict_low"][j]
-                        for j in range(len(factual["weight"]))
-                    ],
-                    prediction=factual["predict"],
-                    w=rnk_weight,
-                    metric=rnk_metric,
-                )
-                for factual in list(factuals.values())
-            ]
-            features_list_to_plot = [
-                canonical_rank_indices(ranking, top_k=num_to_show)
-                for ranking, num_to_show in zip(rankings, filter_top, strict=False)
+                {"predict": group["weight"], "classes": group["classes"]}
+                for group in factuals.values()
             ]
 
         column_names_list = list(factuals)
@@ -3543,7 +3534,7 @@ class MultiClassCalibratedExplanations(CalibratedExplanations):
             "predicts": predicts,
             "feature_weights_list": feature_weights_list,
             "features_list_to_plot": features_list_to_plot,
-            "filter_top": filter_top,
+            "filter_top": selected_counts,
             "colors": colors,
             "column_names_list": column_names_list,
             "title": title,
