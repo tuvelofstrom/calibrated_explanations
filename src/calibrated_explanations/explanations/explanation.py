@@ -54,6 +54,7 @@ from ..utils import (
     safe_mean,
 )
 from ..utils.exceptions import CalibratedError, ValidationError
+from ..utils.deprecations import deprecate
 from ..utils.helper import assign_threshold as normalize_threshold
 from ..utils.int_utils import collect_ints
 from ._conjunctions import ConjunctionState
@@ -517,10 +518,10 @@ class CalibratedExplanation(ABC):
                 details={"param": "num_to_show", "value": repr(num_to_show)},
             )
         if num_to_show is not None and num_to_show <= 0:
-            warnings.warn(
+            deprecate(
                 "rank_features(num_to_show <= 0) uses deprecated v1.0.x "
                 "selection semantics; migrate to canonical top_k.",
-                DeprecationWarning,
+                key="rank_features.nonpositive_count",
                 stacklevel=2,
             )
             # Preserve the exact v1.0.x selection algorithm through the
@@ -2499,9 +2500,6 @@ class FactualExplanation(CalibratedExplanation):
         from ..utils.ranking import canonical_rank_indices
 
         canonical_rank_indices([0.0] * num_features_to_show, top_k=filter_top)
-        from ..utils.ranking import canonical_rank_indices
-
-        canonical_rank_indices([0.0] * num_features_to_show, top_k=filter_top)
         if filter_top is None:
             filter_top = num_features_to_show
         filter_top = np.min([num_features_to_show, filter_top])
@@ -2553,10 +2551,10 @@ class FactualExplanation(CalibratedExplanation):
         else:
             # Legacy factual plot metrics stay available with a deprecation
             # warning until ADR-020 permits removal in v2.0.0.
-            warnings.warn(
+            deprecate(
                 "Non-feature_weight factual plot ranking is deprecated; "
                 "use rnk_metric='feature_weight'.",
-                DeprecationWarning,
+                key="plot.factual.rnk_metric",
                 stacklevel=2,
             )
             ranking = calculate_metrics(
@@ -4468,6 +4466,9 @@ class FastExplanation(CalibratedExplanation):
         self._check_preconditions()
         predict = self.prediction
         num_features_to_show = len(factual["weight"])
+        from ..utils.ranking import canonical_rank_indices
+
+        canonical_rank_indices([0.0] * num_features_to_show, top_k=filter_top)
         if filter_top is None:
             filter_top = num_features_to_show
         filter_top = np.min([num_features_to_show, filter_top])
@@ -4506,10 +4507,10 @@ class FastExplanation(CalibratedExplanation):
         else:
             # Legacy factual plot metrics stay available with a deprecation
             # warning until ADR-020 permits removal in v2.0.0.
-            warnings.warn(
+            deprecate(
                 "Non-feature_weight factual plot ranking is deprecated; "
                 "use rnk_metric='feature_weight'.",
-                DeprecationWarning,
+                key="plot.factual.rnk_metric",
                 stacklevel=2,
             )
             ranking = calculate_metrics(
