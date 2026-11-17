@@ -288,11 +288,11 @@ def test_alternative_plot_default_ranks_by_ensured_score(recorded_alternative_pl
 
     explanation.plot(show=False)
 
-    # ensured, w=0.5: r1 0.865 > r2 0.800 > r0 0.400 -- the reverse of __repr__ for r0
+    # ensured, w=0.5: same strongest-first ordering as alternative __repr__
     assert recorded_alternative_plot == [["r1", "r2", "r0"]]
 
 
-def test_alternative_plot_feature_weight_metric_matches_repr(recorded_alternative_plot):
+def test_alternative_plot_feature_weight_metric_preserves_legacy_delta_order(recorded_alternative_plot):
     explanation = _make_alternative()
 
     explanation.plot(show=False, rnk_metric="feature_weight")
