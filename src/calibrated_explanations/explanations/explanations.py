@@ -3395,7 +3395,15 @@ class MultiClassCalibratedExplanations(CalibratedExplanations):
                 sorted_factuals[rule]["base_predict"].append(base_predict)
                 sorted_factuals[rule]["base_predict_low"].append(base_predict_low)
                 sorted_factuals[rule]["base_predict_high"].append(base_predict_high)
-                sorted_factuals[rule]["classes"].append(cls)
+                # Native CE rules use a scalar class label; tolerate aligned
+                # per-rule class arrays from compatibility/test adapters.
+                cls_value = (
+                    cls[j]
+                    if isinstance(cls, (list, tuple, np.ndarray))
+                    and len(cls) == len(factual["rule"])
+                    else cls
+                )
+                sorted_factuals[rule]["classes"].append(cls_value)
 
                 sorted_factuals[rule]["predict"].append(factual["predict"][j])
                 sorted_factuals[rule]["predict_low"].append(factual["predict_low"][j])
