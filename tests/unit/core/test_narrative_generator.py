@@ -483,3 +483,90 @@ def test_generate_narrative_should_populate_runner_up_and_clip_probability_bound
     assert "Calibrated Probability for class 2: 0.944" in narrative
     assert "Prediction Interval: [0.933, 1.000]" in narrative
     assert "Runner-up Class: 1 (margin 0.908)" in narrative
+
+
+def test_should_select_canonical_top_k_in_factual_template_narrative():
+    """ADR-042 D9/D16: top-k applies before presentation grouping."""
+    from types import SimpleNamespace
+
+    generator = NarrativeGenerator()
+    generator.templates = {
+        "narrative_templates": {
+            "binary_classification": {
+                "factual": {"beginner": "Selected rules:\\n* {feature_name} {condition}"}
+            }
+        }
+    }
+    rules = {
+        "rule": ["f0 > 0", "f1 > 0", "f2 > 0"],
+        "feature": [0, 1, 2],
+        "weight": [0.1, 0.8, 0.4],
+        "weight_low": [0.05, 0.75, 0.35],
+        "weight_high": [0.15, 0.85, 0.45],
+        "predict": [0.55, 0.8, 0.65],
+        "predict_low": [0.5, 0.75, 0.6],
+        "predict_high": [0.6, 0.85, 0.7],
+        "value": [1, 2, 3],
+        "base_predict": [0.6],
+        "base_predict_low": [0.55],
+        "base_predict_high": [0.65],
+        "classes": 1,
+    }
+    explanation = SimpleNamespace(
+        get_rules=lambda: rules, get_class_labels=lambda: {0: "no", 1: "yes"}
+    )
+    result = generator.generate_narrative(
+        explanation,
+        problem_type="binary_classification",
+        explanation_type="factual",
+        expertise_level="beginner",
+        feature_names=["f0", "f1", "f2"],
+        filter_top=2,
+    )
+    assert result.index("f1") < result.index("f2")
+    assert "f0" not in result
+
+
+def test_should_filter_base_identical_alternatives_before_canonical_top_k_narrative():
+    """ADR-042 D7/D16: an excluded stronger rule must not consume a slot."""
+    from types import SimpleNamespace
+
+    generator = NarrativeGenerator()
+    generator.templates = {
+        "narrative_templates": {
+            "binary_classification": {
+                "alternative": {"beginner": "Selected rules:\\n* {feature_name} {condition}"}
+            }
+        }
+    }
+    rules = {
+        "rule": ["f0 > 0", "f1 > 0", "f2 > 0", "f3 > 0"],
+        "feature": [0, 1, 2, 3],
+        "weight": [0.1, 0.1, 0.1, 0.1],
+        "weight_low": [0.0] * 4,
+        "weight_high": [0.2] * 4,
+        "predict": [0.6, 0.7, 0.8, 0.9],
+        "predict_low": [0.55, 0.6, 0.75, 0.88],
+        "predict_high": [0.65, 0.8, 0.85, 0.92],
+        "value": [0, 1, 2, 3],
+        "base_predict": [0.6],
+        "base_predict_low": [0.55],
+        "base_predict_high": [0.65],
+        "classes": 1,
+    }
+    explanation = SimpleNamespace(
+        get_rules=lambda: rules,
+        get_class_labels=lambda: {0: "no", 1: "yes"},
+        prediction={"predict": 0.6, "low": 0.55, "high": 0.65},
+    )
+    result = generator.generate_narrative(
+        explanation,
+        problem_type="binary_classification",
+        explanation_type="alternative",
+        expertise_level="beginner",
+        feature_names=["f0", "f1", "f2", "f3"],
+        filter_top=2,
+    )
+    assert result.index("f3") < result.index("f2")
+    assert "f0" not in result
+    assert "f1" not in result
