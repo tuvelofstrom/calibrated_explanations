@@ -200,6 +200,7 @@ def test_should_preserve_ranking_and_report_multiclass_narrative_format_fallback
                 raise ValueError("dict unavailable")
             return "rendered"
 
+    caplog.set_level("INFO")
     text_only = TextOnly()
     coll = MultiClassCalibratedExplanations(
         type("Explainer", (), {"num_features": 1})(),
