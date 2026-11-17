@@ -493,7 +493,7 @@ def test_should_select_canonical_top_k_in_factual_template_narrative():
     generator.templates = {
         "narrative_templates": {
             "binary_classification": {
-                "factual": {"beginner": "Selected rules:\\n* {feature_name} {condition}"}
+                "factual": {"beginner": "Selected rules:\n* {feature_name} {condition}"}
             }
         }
     }
@@ -535,7 +535,7 @@ def test_should_filter_base_identical_alternatives_before_canonical_top_k_narrat
     generator.templates = {
         "narrative_templates": {
             "binary_classification": {
-                "alternative": {"beginner": "Selected rules:\\n* {feature_name} {condition}"}
+                "alternative": {"beginner": "Selected rules:\n* {feature_name} {condition}"}
             }
         }
     }
