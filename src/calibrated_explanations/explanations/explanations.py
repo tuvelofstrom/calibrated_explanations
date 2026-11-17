@@ -2749,8 +2749,19 @@ class MultiClassCalibratedExplanations(CalibratedExplanations):
                         filter_top=filter_top,
                         **kwargs,
                     )
-                except (AttributeError, TypeError, ValueError, KeyError):
-                    # Fallback: try to obtain text output
+                except (AttributeError, TypeError, ValueError, KeyError) as exc:
+                    # The text representation is a format fallback only.
+                    # Never discard explicit ranking settings during fallback.
+                    import logging
+
+                    import warnings
+
+                    msg = (
+                        "Multiclass narrative dict output unavailable; retrying "
+                        "as text with identical ranking parameters"
+                    )
+                    logging.getLogger(__name__).info("%s: %s", msg, exc)
+                    warnings.warn(msg, UserWarning, stacklevel=2)
                     narr = {
                         "text": explanation.to_narrative(
                             template_path=template_path,
@@ -2758,6 +2769,9 @@ class MultiClassCalibratedExplanations(CalibratedExplanations):
                             output_format="text",
                             conjunction_separator=conjunction_separator,
                             align_weights=align_weights,
+                            rnk_metric=rnk_metric,
+                            rnk_weight=rnk_weight,
+                            filter_top=filter_top,
                             **kwargs,
                         )
                     }
