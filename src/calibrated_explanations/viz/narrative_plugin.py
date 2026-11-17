@@ -252,7 +252,14 @@ class NarrativePlotPlugin:
                     "Unknown narrative ranking metric",
                     details={"param": "rnk_metric", "value": rnk_metric},
                 )
-            if not math.isfinite(float(rnk_weight)) or not -1 <= float(rnk_weight) <= 1:
+            try:
+                numerical_weight = float(rnk_weight)
+            except (TypeError, ValueError, OverflowError) as exc:
+                raise ValidationError(
+                    "rnk_weight must be finite and in [-1, 1]",
+                    details={"param": "rnk_weight", "value": repr(rnk_weight)},
+                ) from exc
+            if not math.isfinite(numerical_weight) or not -1 <= numerical_weight <= 1:
                 raise ValidationError(
                     "rnk_weight must be finite and in [-1, 1]",
                     details={"param": "rnk_weight", "value": repr(rnk_weight)},
