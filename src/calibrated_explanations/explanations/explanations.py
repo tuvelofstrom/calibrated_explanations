@@ -1499,6 +1499,9 @@ class CalibratedExplanations:  # pylint: disable=too-many-instance-attributes
                     template_path=template_path,
                     expertise_level=expertise_level,
                     output_format=output_format,
+                    rnk_metric=rnk_metric,
+                    rnk_weight=rnk_weight,
+                    filter_top=filter_top,
                     **kwargs,
                 )
 
@@ -1507,6 +1510,9 @@ class CalibratedExplanations:  # pylint: disable=too-many-instance-attributes
                 template_path=template_path,
                 expertise_level=expertise_level,
                 output=output_format,
+                rnk_metric=rnk_metric,
+                rnk_weight=rnk_weight,
+                filter_top=filter_top,
                 **kwargs,
             )
         _log_forwarded_plot_kwargs(
@@ -1602,6 +1608,10 @@ class CalibratedExplanations:  # pylint: disable=too-many-instance-attributes
         output_format="dataframe",
         conjunction_separator=" AND ",
         align_weights=True,
+        *,
+        rnk_metric=None,
+        rnk_weight=0.5,
+        filter_top=10,
         **kwargs,
     ):
         """
@@ -1627,6 +1637,14 @@ class CalibratedExplanations:  # pylint: disable=too-many-instance-attributes
         align_weights : bool, default=True
             If True, vertically align weight columns in the narrative output.
             If False, no alignment is applied.
+        rnk_metric : str or None, optional
+            Alternative ensured ranking (default), feature_weight or uncertainty.
+            Factual and FAST accept feature_weight only.
+        rnk_weight : float, default=0.5
+            Alternative ensured score trade-off.
+        filter_top : int or None, default=10
+            Select the strongest ten eligible rules by default, matching
+            collection.plot(). The rank itself has no statistical guarantee.
         **kwargs : dict
             Additional keyword arguments passed to the narrative plugin.
 
@@ -1665,6 +1683,11 @@ class CalibratedExplanations:  # pylint: disable=too-many-instance-attributes
         :meth:`.plot` : Plot explanations with various visual styles.
         """
         reject_unsupported_narrative_kwargs(kwargs, surface=f"{type(self).__name__}.to_narrative")
+        if not self.is_alternative() and rnk_metric not in (None, "feature_weight"):
+            raise ValidationError(
+                "Factual and FAST narratives only support feature_weight ranking",
+                details={"param": "rnk_metric", "value": rnk_metric},
+            )
 
         from ..viz.narrative_plugin import NarrativePlotPlugin
 
@@ -1679,6 +1702,9 @@ class CalibratedExplanations:  # pylint: disable=too-many-instance-attributes
             output=output_format,
             conjunction_separator=conjunction_separator,
             align_weights=align_weights,
+            rnk_metric=rnk_metric,
+            rnk_weight=rnk_weight,
+            filter_top=filter_top,
             **kwargs,
         )
 
@@ -2709,6 +2735,9 @@ class MultiClassCalibratedExplanations(CalibratedExplanations):
             "conjunction_separator", kwargs.get("conjunction_separator", " AND ")
         )
         align_weights = kwargs.pop("align_weights", kwargs.get("align_weights", True))
+        rnk_metric = kwargs.pop("rnk_metric", None)
+        rnk_weight = kwargs.pop("rnk_weight", 0.5)
+        filter_top = kwargs.pop("filter_top", 10)
         reject_unsupported_narrative_kwargs(kwargs, surface=f"{type(self).__name__}.to_narrative")
 
         # Helper to convert a per-class explanation to the desired intermediate dict
@@ -2723,10 +2752,22 @@ class MultiClassCalibratedExplanations(CalibratedExplanations):
                         output_format="dict",
                         conjunction_separator=conjunction_separator,
                         align_weights=align_weights,
+                        rnk_metric=rnk_metric,
+                        rnk_weight=rnk_weight,
+                        filter_top=filter_top,
                         **kwargs,
                     )
-                except (AttributeError, TypeError, ValueError, KeyError):
-                    # Fallback: try to obtain text output
+                except (AttributeError, TypeError, ValueError, KeyError) as exc:
+                    # The text representation is a format fallback only.
+                    # Never discard explicit ranking settings during fallback.
+                    import logging
+
+                    msg = (
+                        "Multiclass narrative dict output unavailable; retrying "
+                        "as text with identical ranking parameters"
+                    )
+                    logging.getLogger(__name__).info("%s: %s", msg, exc)
+                    warnings.warn(msg, UserWarning, stacklevel=2)
                     narr = {
                         "text": explanation.to_narrative(
                             template_path=template_path,
@@ -2734,6 +2775,9 @@ class MultiClassCalibratedExplanations(CalibratedExplanations):
                             output_format="text",
                             conjunction_separator=conjunction_separator,
                             align_weights=align_weights,
+                            rnk_metric=rnk_metric,
+                            rnk_weight=rnk_weight,
+                            filter_top=filter_top,
                             **kwargs,
                         )
                     }
@@ -3025,6 +3069,7 @@ class MultiClassCalibratedExplanations(CalibratedExplanations):
                         filename=filename,
                         uncertainty=uncertainty,
                         style=style,
+                        **kwargs,
                     )
                 else:
                     warnings.warn(
@@ -3038,6 +3083,7 @@ class MultiClassCalibratedExplanations(CalibratedExplanations):
                     filename=filename,
                     uncertainty=uncertainty,
                     style=style,
+                    **kwargs,
                 )
         else:
             import matplotlib.colors as mcolors
@@ -3045,6 +3091,10 @@ class MultiClassCalibratedExplanations(CalibratedExplanations):
             rgb = np.array(list(permutations(range(0, 256, 11), 3))) / 255.0
             colors = [rgb.tolist()[i * 23] for i in range(25)]
             colors = list(mcolors.BASE_COLORS.values())
+            from ..utils.ranking import canonical_rank_indices
+
+            requested_top = filter_top
+            canonical_rank_indices([], top_k=requested_top)
             for i, class_explanations in enumerate(self.explanations):
                 # Ensure style_override gets passed through
                 class_explanations_list = list(class_explanations.values())
@@ -3057,9 +3107,7 @@ class MultiClassCalibratedExplanations(CalibratedExplanations):
                 if rnk_metric is None:
                     rnk_metric = "ensured"
                 rnk_weight = kwargs.get("rnk_weight", 0.5)
-                if rnk_metric == "uncertainty":
-                    rnk_weight = 1.0
-                    rnk_metric = "ensured"
+                # 'uncertainty' is ensured with zero weight (rank authority).
 
                 alternatives = []
                 for ex in list(class_explanations.values()):
@@ -3079,14 +3127,18 @@ class MultiClassCalibratedExplanations(CalibratedExplanations):
                             ex._check_preconditions()
                     predicts = [getattr(ex, "prediction", None) for ex in class_explanations_list]
 
-                filter_top = [len(alternative["rule"]) for alternative in alternatives]
+                limits = [
+                    len(candidate["rule"]) if requested_top is None
+                    else min(len(candidate["rule"]), requested_top)
+                    for candidate in alternatives
+                ]
                 """if filter_top is None:
                     filter_top = num_features_to_show_list
                 else:
                     filter_top = [filter_top for factual in factuals]
                 filter_top = [np.min([num_features_to_show, filter_]) for num_features_to_show, filter_ in zip(num_features_to_show_list,filter_top)]"""
 
-                if len(filter_top) <= 0:
+                if not limits:
                     warnings.warn(
                         f"The explanation has no rules to plot. The index of the instance is {i}",
                         stacklevel=2,
@@ -3111,63 +3163,34 @@ class MultiClassCalibratedExplanations(CalibratedExplanations):
                     for alternative in alternatives
                 ]
 
-                widths = [
-                    np.reshape(
-                        np.array(alternative["weight_high"]) - np.array(alternative["weight_low"]),
-                        (len(alternative["weight"])),
+                from ..utils.ranking import rank_rule_indices
+
+                features_list_to_plot = []
+                for alternative, pred, limit in zip(
+                    alternatives, predicts, limits, strict=False
+                ):
+                    base = pred["predict"] if isinstance(pred, dict) else alternative["base_predict"][0]
+                    ordered = rank_rule_indices(
+                        alternative,
+                        explanation_type="alternative",
+                        base_predict=base,
+                        probability=True,
+                        rnk_metric=rnk_metric,
+                        rnk_weight=rnk_weight,
                     )
-                    for alternative in alternatives
-                ]
+                    eligible = [
+                        j for j in ordered
+                        if not (
+                            np.isclose(alternative["predict"][j], pred["predict"])
+                            and np.isclose(alternative["predict_low"][j], pred["low"])
+                            and np.isclose(alternative["predict_high"][j], pred["high"])
+                        )
+                    ] if isinstance(pred, dict) else ordered
+                    features_list_to_plot.append(eligible[:limit])
 
-                features_weights = [
-                    np.reshape(alternative["weight"], (len(alternative["weight"])))
-                    for alternative in alternatives
-                ]
-
-                def _rank_features_for_multiclass(explanation, *args, **rank_kwargs):
-                    rank_fn = getattr(explanation, "rank_features", None)
-                    if callable(rank_fn):
-                        return rank_fn(*args, **rank_kwargs)
-                    return explanation._rank_features(*args, **rank_kwargs)
-
-                if rnk_metric == "feature_weight":
-                    features_list_to_plot = [
-                        _rank_features_for_multiclass(
-                            ex, feature_weights, width=width, num_to_show=num_to_show
-                        )
-                        for ex, feature_weights, width, num_to_show in zip(
-                            list(class_explanations.values()),
-                            features_weights,
-                            widths,
-                            filter_top,
-                            strict=False,
-                        )
-                    ]
-                else:
-                    predictions = [
-                        alternative["predict"]
-                        if predict["predict"] > 0.5
-                        else [1 - p for p in alternative["predict"]]
-                        for alternative, predict in zip(alternatives, predicts, strict=False)
-                    ]
-                    rankings = [
-                        calculate_metrics(
-                            uncertainty=[
-                                alternative["predict_high"][i] - alternative["predict_low"][i]
-                                for i in range(len(alternative["rule"]))
-                            ],
-                            prediction=prediction,
-                            w=rnk_weight,
-                            metric=rnk_metric,
-                        )
-                        for alternative, prediction in zip(alternatives, predictions, strict=False)
-                    ]
-                    features_list_to_plot = [
-                        _rank_features_for_multiclass(ex, width=ranking, num_to_show=num_to_show)
-                        for ex, ranking, num_to_show in zip(
-                            list(class_explanations.values()), rankings, filter_top, strict=False
-                        )
-                    ]  ####################
+                selected_counts = [len(indices) for indices in features_list_to_plot]
+                if not any(selected_counts):
+                    continue
 
                 if "style" in kwargs and kwargs["style"] == "triangular":
                     raise ValidationError(
@@ -3209,7 +3232,7 @@ class MultiClassCalibratedExplanations(CalibratedExplanations):
                     predicts,
                     feature_predicts,
                     features_list_to_plot,
-                    num_to_show_list=filter_top,
+                    num_to_show_list=selected_counts,
                     colors=colors,
                     column_names_list=column_names_list,
                     title=title,
@@ -3295,6 +3318,7 @@ class MultiClassCalibratedExplanations(CalibratedExplanations):
                         filename=filename,
                         uncertainty=uncertainty,
                         style=style,
+                        **kwargs,
                     )
                 else:
                     warnings.warn(
@@ -3308,6 +3332,7 @@ class MultiClassCalibratedExplanations(CalibratedExplanations):
                     filename=filename,
                     uncertainty=uncertainty,
                     style=style,
+                    **kwargs,
                 )
         else:
             for i, class_explanations in enumerate(self.explanations):
@@ -3321,6 +3346,7 @@ class MultiClassCalibratedExplanations(CalibratedExplanations):
                     uncertainty=uncertainty,
                     style_override=style_override,
                     kwargs=kwargs,
+                    filter_top=filter_top,
                 )
 
                 if payload is None:
@@ -3377,7 +3403,15 @@ class MultiClassCalibratedExplanations(CalibratedExplanations):
                 sorted_factuals[rule]["base_predict"].append(base_predict)
                 sorted_factuals[rule]["base_predict_low"].append(base_predict_low)
                 sorted_factuals[rule]["base_predict_high"].append(base_predict_high)
-                sorted_factuals[rule]["classes"].append(cls)
+                # Native CE rules use a scalar class label; tolerate aligned
+                # per-rule class arrays from compatibility/test adapters.
+                cls_value = (
+                    cls[j]
+                    if isinstance(cls, (list, tuple, np.ndarray))
+                    and len(cls) == len(factual["rule"])
+                    else cls
+                )
+                sorted_factuals[rule]["classes"].append(cls_value)
 
                 sorted_factuals[rule]["predict"].append(factual["predict"][j])
                 sorted_factuals[rule]["predict_low"].append(factual["predict_low"][j])
@@ -3402,6 +3436,7 @@ class MultiClassCalibratedExplanations(CalibratedExplanations):
         uncertainty: bool,
         style_override: Any,
         kwargs: Mapping[str, Any],
+        filter_top: int | None = None,
     ) -> dict | None:
         """Construct the non-render payload for plotting factual multiclass explanations.
 
@@ -3417,18 +3452,57 @@ class MultiClassCalibratedExplanations(CalibratedExplanations):
 
         class_explanations_list = list(class_explanations.values())
 
-        rnk_metric = kwargs.get("rnk_metric", "feature_weight")
-        if rnk_metric is None:
-            rnk_metric = "feature_weight"
+        from ..utils.deprecations import deprecate
+        from ..utils.ranking import canonical_rank_indices, rank_rule_indices
+
+        rnk_metric = kwargs.get("rnk_metric", "feature_weight") or "feature_weight"
         rnk_weight = kwargs.get("rnk_weight", 0.5)
-        if rnk_metric == "uncertainty":
-            rnk_weight = 1.0
-            rnk_metric = "ensured"
+        canonical_rank_indices([], top_k=filter_top)
+        if filter_top == 0:
+            return None
 
-        factuals = [ex.get_rules() for ex in class_explanations_list]
-        factuals = self.sort_factuals_by_rule(factuals)
+        # This is a comparative visualization grouped by rule name across
+        # classes. Rank/select the native rules WITHIN each class first;
+        # grouping those selected rules afterwards is presentation only.
+        # Ranking the grouped columns would incorrectly rank classes, not rules.
+        native_factuals = [ex.get_rules() for ex in class_explanations_list]
+        selected_factuals = []
+        for factual in native_factuals:
+            if rnk_metric == "feature_weight":
+                indices = rank_rule_indices(
+                    factual, explanation_type="factual", top_k=filter_top
+                )
+            else:
+                deprecate(
+                    "Non-feature_weight factual plot ranking is deprecated; "
+                    "use rnk_metric='feature_weight'.",
+                    key="plot.factual.rnk_metric",
+                    stacklevel=2,
+                )
+                metric = "ensured" if rnk_metric == "uncertainty" else rnk_metric
+                weight = 1.0 if rnk_metric == "uncertainty" else rnk_weight
+                scores = calculate_metrics(
+                    uncertainty=[
+                        factual["predict_high"][j] - factual["predict_low"][j]
+                        for j in range(len(factual["weight"]))
+                    ],
+                    prediction=factual["predict"],
+                    w=weight,
+                    metric=metric,
+                )
+                indices = canonical_rank_indices(scores, top_k=filter_top)
 
-        # Ensure each explanation has a sensible `index` set before checks
+            selected_factuals.append({
+                key: [values[j] for j in indices]
+                if isinstance(values, list) and len(values) == len(factual["rule"])
+                else values
+                for key, values in factual.items()
+            })
+        factuals = self.sort_factuals_by_rule(selected_factuals)
+        if not factuals:
+            return None
+
+        # Ensure each explanation has a sensible index before visualization.
         for ex in class_explanations_list:
             with contextlib.suppress(Exception):
                 ex.index = i
@@ -3436,63 +3510,27 @@ class MultiClassCalibratedExplanations(CalibratedExplanations):
                 ex._check_preconditions()
 
         predicts = [getattr(ex, "prediction", None) for ex in class_explanations_list]
-
-        filter_top = [len(factual["weight"]) for factual in list(factuals.values())]
-        if len(filter_top) <= 0:
-            return None
+        # Group row indices describe distinct classes for each selected rule.
+        # Their order is presentation and must not rerank the native rules.
+        features_list_to_plot = [
+            list(range(len(group["weight"]))) for group in factuals.values()
+        ]
+        selected_counts = [len(indices) for indices in features_list_to_plot]
 
         if uncertainty:
             feature_weights_list = [
                 {
-                    "predict": factual["weight"],
-                    "low": factual["weight_low"],
-                    "high": factual["weight_high"],
-                    "classes": factual["classes"],
+                    "predict": group["weight"],
+                    "low": group["weight_low"],
+                    "high": group["weight_high"],
+                    "classes": group["classes"],
                 }
-                for factual in list(factuals.values())
+                for group in factuals.values()
             ]
         else:
             feature_weights_list = [
-                {"predict": factual["weight"], "classes": factual["classes"]}
-                for factual in list(factuals.values())
-            ]
-
-        widths = [
-            np.reshape(
-                np.array(factual["weight_high"]) - np.array(factual["weight_low"]),
-                (len(factual["weight"])),
-            )
-            for factual in list(factuals.values())
-        ]
-
-        first_explanation = next(iter(class_explanations.values()))
-        rank_features = getattr(first_explanation, "rank_features", None)
-        if not callable(rank_features):
-            rank_features = first_explanation._rank_features
-
-        if rnk_metric == "feature_weight":
-            features_list_to_plot = [
-                rank_features(factual["weight"], width=width, num_to_show=num_to_show)
-                for factual, width, num_to_show in zip(
-                    list(factuals.values()), widths, filter_top, strict=False
-                )
-            ]
-        else:
-            rankings = [
-                calculate_metrics(
-                    uncertainty=[
-                        factual["predict_high"][j] - factual["predict_low"][j]
-                        for j in range(len(factual["weight"]))
-                    ],
-                    prediction=factual["predict"],
-                    w=rnk_weight,
-                    metric=rnk_metric,
-                )
-                for factual in list(factuals.values())
-            ]
-            features_list_to_plot = [
-                rank_features(width=ranking, num_to_show=num_to_show)
-                for ranking, num_to_show in zip(rankings, filter_top, strict=False)
+                {"predict": group["weight"], "classes": group["classes"]}
+                for group in factuals.values()
             ]
 
         column_names_list = list(factuals)
@@ -3514,7 +3552,7 @@ class MultiClassCalibratedExplanations(CalibratedExplanations):
             "predicts": predicts,
             "feature_weights_list": feature_weights_list,
             "features_list_to_plot": features_list_to_plot,
-            "filter_top": filter_top,
+            "filter_top": selected_counts,
             "colors": colors,
             "column_names_list": column_names_list,
             "title": title,

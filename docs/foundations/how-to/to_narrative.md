@@ -111,6 +111,44 @@ narratives = explanations.to_narrative(
 The `to_narrative` method provides a clean, intuitive API for generating
 narratives from calibrated explanations.
 
+## Canonical ranking and rule selection (v1.1.0)
+
+Narratives use the same canonical rule ordering as built-in plots (ADR-042).
+For factual and FAST explanations, the strongest rule has the largest absolute
+calibrated feature weight. Alternative explanations use the ensured score by
+default; `rnk_metric="feature_weight"` explicitly ranks by the absolute change
+from the base prediction. `rnk_metric="uncertainty"` ranks alternatives by
+smallest prediction interval (ensured with weight zero).
+
+```python
+alternative = explainer.explore_alternatives(x_test)
+text = alternative[0].to_narrative(
+    output_format="text",
+    rnk_metric="ensured",
+    rnk_weight=0.5,
+    filter_top=5,
+)
+alternative[0].plot(
+    rnk_metric="ensured",
+    rnk_weight=0.5,
+    filter_top=5,
+    show=False,
+)
+```
+
+For a **single explanation**, `filter_top=None` selects all eligible rules
+by default. For a **collection**, it defaults to 10, matching collection
+`.plot()`. Alternative rules identical to the base prediction and interval
+are filtered before the top-k selection. Presentation groups retain the
+canonical order of the selected rules.
+
+If you generate conjunctions before plotting or narrating, pass the same
+`rnk_metric` and `rnk_weight` to `add_conjunctions()`; conjunction candidate
+selection happens at creation time. The default ensured score for **plain
+regression** uses raw, unnormalized target units, so its ranking may be
+sensitive to target scale and the choice of trade-off weight. Rank order has
+no statistical stability guarantee, and a narrative is not itself calibrated.
+
 ## Narrative facts for your own text
 
 `to_narrative()` renders the packaged templates offline. If you write your own
