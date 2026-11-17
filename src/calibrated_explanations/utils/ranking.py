@@ -149,7 +149,13 @@ def rank_rule_indices(
     if metric == "feature_weight":
         return canonical_rank_indices([abs(float(w)) for w in weights], widths, top_k=top_k)
 
-    weight = 0.0 if metric == "uncertainty" else float(rnk_weight)
+    try:
+        weight = 0.0 if metric == "uncertainty" else float(rnk_weight)
+    except (TypeError, ValueError, OverflowError) as exc:
+        raise ValidationError(
+            "rnk_weight must be finite and in [-1, 1]",
+            details={"param": "rnk_weight", "value": repr(rnk_weight)},
+        ) from exc
     if not math.isfinite(weight) or not -1.0 <= weight <= 1.0:
         raise ValidationError(
             "rnk_weight must be finite and in [-1, 1]",
