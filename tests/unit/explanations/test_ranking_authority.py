@@ -119,3 +119,21 @@ def test_should_validate_factual_metric_and_alternative_weight():
         rank_rule_indices(
             _facts(), explanation_type="alternative", base_predict=0.6, rnk_weight=math.nan
         )
+
+
+def test_should_not_mutate_native_rule_table_when_ranking():
+    """ADR-042 D13: returning ranked indices must not reorder payload arrays."""
+    from copy import deepcopy
+
+    rules = _facts()
+    original = deepcopy(rules)
+    assert rank_rule_indices(rules, explanation_type="alternative", base_predict=0.6)
+    assert rules == original
+
+
+def test_should_raise_validation_error_for_non_numeric_ranking_weight():
+    with pytest.raises(ValidationError):
+        rank_rule_indices(
+            _facts(), explanation_type="alternative",
+            base_predict=0.6, rnk_weight="invalid",
+        )
