@@ -3061,7 +3061,7 @@ class MultiClassCalibratedExplanations(CalibratedExplanations):
                         filename=filename,
                         uncertainty=uncertainty,
                         style=style,
-                    **kwargs,
+                        **kwargs,
                     )
                 else:
                     warnings.warn(
@@ -3075,7 +3075,7 @@ class MultiClassCalibratedExplanations(CalibratedExplanations):
                     filename=filename,
                     uncertainty=uncertainty,
                     style=style,
-                **kwargs,
+                    **kwargs,
                 )
         else:
             import matplotlib.colors as mcolors
@@ -3310,7 +3310,7 @@ class MultiClassCalibratedExplanations(CalibratedExplanations):
                         filename=filename,
                         uncertainty=uncertainty,
                         style=style,
-                    **kwargs,
+                        **kwargs,
                     )
                 else:
                     warnings.warn(
@@ -3324,7 +3324,7 @@ class MultiClassCalibratedExplanations(CalibratedExplanations):
                     filename=filename,
                     uncertainty=uncertainty,
                     style=style,
-                **kwargs,
+                    **kwargs,
                 )
         else:
             for i, class_explanations in enumerate(self.explanations):
@@ -3442,6 +3442,8 @@ class MultiClassCalibratedExplanations(CalibratedExplanations):
         rnk_metric = kwargs.get("rnk_metric", "feature_weight") or "feature_weight"
         rnk_weight = kwargs.get("rnk_weight", 0.5)
         canonical_rank_indices([], top_k=filter_top)
+        if filter_top == 0:
+            return None
 
         # This is a comparative visualization grouped by rule name across
         # classes. Rank/select the native rules WITHIN each class first;
