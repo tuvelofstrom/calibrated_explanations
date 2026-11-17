@@ -130,7 +130,7 @@ def rank_rule_indices(
     if explanation_type != "alternative":
         if rnk_metric not in (None, "feature_weight"):
             raise ValidationError(
-                "Factual and FAST explanations rank by feature_weight only",
+                "ADR-042: factual and FAST explanations rank by feature_weight only",
                 details={"param": "rnk_metric", "value": rnk_metric},
             )
         lows, highs = array("weight_low"), array("weight_high")
