@@ -2754,8 +2754,6 @@ class MultiClassCalibratedExplanations(CalibratedExplanations):
                     # Never discard explicit ranking settings during fallback.
                     import logging
 
-                    import warnings
-
                     msg = (
                         "Multiclass narrative dict output unavailable; retrying "
                         "as text with identical ranking parameters"
@@ -3183,6 +3181,8 @@ class MultiClassCalibratedExplanations(CalibratedExplanations):
                     features_list_to_plot.append(eligible[:limit])
 
                 selected_counts = [len(indices) for indices in features_list_to_plot]
+                if not any(selected_counts):
+                    continue
 
                 if "style" in kwargs and kwargs["style"] == "triangular":
                     raise ValidationError(
